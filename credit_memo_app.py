@@ -595,7 +595,15 @@ List 5–10 specific conditions you would attach to approval (e.g. personal sure
 State clearly: APPROVE / APPROVE WITH CONDITIONS / DECLINE / REFER FOR FURTHER INFORMATION
 Provide your rationale in 3–5 sentences. Include suggested deal structure if approving (term, rate basis, security required)."""
 
-    client = Anthropic()
+    # ── Load API key from Streamlit secrets (set in Streamlit Cloud dashboard) ──
+    try:
+        api_key = st.secrets["ANTHROPIC_API_KEY"]
+    except Exception:
+        st.error("⚠️ API key not found. Please add ANTHROPIC_API_KEY to your Streamlit secrets.")
+        st.info("In Streamlit Cloud: go to App Settings → Secrets and add:\nANTHROPIC_API_KEY = \"sk-ant-...\"")
+        st.stop()
+
+    client = Anthropic(api_key=api_key)
 
     memo_placeholder = st.empty()
     full_memo = ""
@@ -629,5 +637,5 @@ Provide your rationale in 3–5 sentences. Include suggested deal structure if a
         )
 
     except Exception as e:
-        st.error(f"Error generating memo: {e}")
-        st.info("Ensure your ANTHROPIC_API_KEY environment variable is set.")
+        st.error(f"❌ Error generating memo: {e}")
+        st.info("If this error persists, verify your API key is valid and has sufficient credits.")
