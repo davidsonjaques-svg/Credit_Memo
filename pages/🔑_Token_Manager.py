@@ -168,7 +168,7 @@ if generate:
         }
 
         base_url    = get_base_url()
-        client_link = f"{base_url}/📋_Fact_Sheet?token={token}"
+        client_link = f"{base_url}/Fact_Sheet?token={token}"
 
         st.success(f"✅ Secure link generated for **{client_name}**")
         st.markdown(f'<div class="link-box">🔗 {client_link}</div>', unsafe_allow_html=True)
@@ -251,7 +251,7 @@ else:
         with col2:
             if status == "active":
                 base_url    = get_base_url()
-                client_link = f"{base_url}/📋_Fact_Sheet?token={token}"
+                client_link = f"{base_url}/Fact_Sheet?token={token}"
                 st.code(client_link, language=None)
             else:
                 st.markdown(f"<span style='color:#3a4f6e;font-family:monospace;font-size:0.78rem'>{token[:20]}…</span>",
