@@ -6,7 +6,7 @@ from utils import require_team_login, send_memo_email
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Deal Fact Sheet | ScaleForce Capital",
+    page_title="Deal Fact Sheet | Inland Fund",
     page_icon="📋",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -192,7 +192,7 @@ label, .stLabel { color: #1d4ed8 !important; font-size: 0.83rem !important; font
 # ── Hero ──────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="hero">
-    <div class="hero-eyebrow">ScaleForce Capital · Deal Intake</div>
+    <div class="hero-eyebrow">Inland Fund · Deal Intake</div>
     <h1>Deal Fact Sheet<br>& Assessment</h1>
     <div class="hero-sub">Complete all sections below. Our AI engine will produce a structured deal assessment and highlight areas requiring further due diligence.</div>
 </div>
@@ -574,7 +574,7 @@ if submitted:
     st.markdown("---")
     st.markdown('<div class="section-label">📄 Generating Deal Fact Sheet Assessment…</div>', unsafe_allow_html=True)
 
-    system_prompt = """You are a senior Investment Analyst at ScaleForce Capital, a South African specialist capital advisory and brokerage firm.
+    system_prompt = """You are a senior Investment Analyst at Inland Fund, a South African specialist capital advisory and brokerage firm.
 
 Your role is to produce structured, professional Deal Fact Sheet Assessments that allow the credit committee to make fast, well-informed decisions.
 
@@ -588,7 +588,7 @@ RULES:
 - Flag anomalies, inconsistencies, and items requiring further due diligence.
 - Use Markdown formatting: ## for sections, ### for sub-sections, bold for key figures, tables where applicable."""
 
-    user_prompt = f"""Generate a complete Deal Fact Sheet Assessment for ScaleForce Capital based on the following data. Cover every section.
+    user_prompt = f"""Generate a complete Deal Fact Sheet Assessment for Inland Fund based on the following data. Cover every section.
 
 DATA:
 {json.dumps(payload, indent=2, default=str)}
@@ -596,7 +596,7 @@ DATA:
 REQUIRED OUTPUT SECTIONS:
 
 # DEAL FACT SHEET ASSESSMENT — {payload['business_name'].upper()}
-Date: {payload['deal_date']} | Prepared by: ScaleForce Capital Investment Team | Status: {payload['analyst_preliminary_view']}
+Date: {payload['deal_date']} | Prepared by: Inland Fund Investment Team | Status: {payload['analyst_preliminary_view']}
 
 ---
 
@@ -684,7 +684,7 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
         subject = f"[ScaleForce] Deal Assessment — {business_name} — {datetime.today().strftime('%d %b %Y')}"
         email_sent = send_memo_email(subject, full_output, business_name, "Deal Fact Sheet Assessment")
         if email_sent:
-            st.success("✅ Assessment emailed to the ScaleForce team inbox.")
+            st.success("✅ Assessment emailed to the Inland Fund team inbox.")
 
         # ── Download buttons — multiple formats ───────────────────────────────
         st.markdown("**Download Assessment:**")
@@ -724,12 +724,12 @@ tr:nth-child(even) td{{background:#f8f9fb}}
 .ftr{{color:#aaa;font-size:0.75rem;text-align:center;border-top:1px solid #ddd;margin-top:3rem;padding-top:1rem}}
 </style></head><body>
 <div class="hdr">
-<p style="color:#e8610a;font-size:0.7rem;letter-spacing:0.2em;text-transform:uppercase;margin:0 0 0.3rem">ScaleForce Capital · Deal Fact Sheet</p>
+<p style="color:#e8610a;font-size:0.7rem;letter-spacing:0.2em;text-transform:uppercase;margin:0 0 0.3rem">Inland Fund · Deal Fact Sheet</p>
 <h1 style="margin:0 0 0.25rem;font-size:1.6rem">{business_name}</h1>
 <p style="color:#555;font-size:0.85rem;margin:0">Generated: {datetime.today().strftime('%d %B %Y at %H:%M')}</p>
 </div>
 <pre style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:0.92rem">{full_output}</pre>
-<div class="ftr">ScaleForce Capital · Confidential · AI-assisted — requires analyst review</div>
+<div class="ftr">Inland Fund · Confidential · AI-assisted — requires analyst review</div>
 </body></html>"""
 
         dl3.download_button(
@@ -754,13 +754,13 @@ tr:nth-child(even) td{{background:#f8f9fb}}
                     Thank You — Submission Received
                 </h2>
                 <p style="color:#555; font-size:0.92rem; line-height:1.7; max-width:480px; margin:0 auto;">
-                    Your information has been submitted securely to the ScaleForce Capital team.
+                    Your information has been submitted securely to the Inland Fund team.
                     A consultant will review your application and be in touch within 1–2 business days.
                 </p>
                 <p style="color:#888; font-size:0.8rem; margin-top:1.5rem;">
                     Questions? Contact us at
-                    <a href="mailto:info@scaleforcecapital.co.za" style="color:#e8610a;">
-                        info@scaleforcecapital.co.za
+                    <a href="mailto:info@inlandfund.co.za" style="color:#e8610a;">
+                        info@inlandfund.co.za
                     </a>
                 </p>
             </div>
