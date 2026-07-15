@@ -2,6 +2,7 @@ import streamlit as st
 import json
 from datetime import datetime
 from anthropic import Anthropic
+from utils import require_team_login, send_memo_email
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -10,6 +11,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+# ── Require team login ─────────────────────────────────────────────────────────
+require_team_login()
 
 # ── Custom CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -629,12 +633,67 @@ Provide your rationale in 3–5 sentences. Include suggested deal structure if a
         )
 
         # Download button
-        st.download_button(
-            label="⬇  Download Memo as Markdown",
+        st.markdown("**Download Credit Memo:**")
+        dl1, dl2, dl3 = st.columns(3)
+
+        dl1.download_button(
+            label="⬇  Download as .txt",
             data=full_memo,
-            file_name=f"credit_memo_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.md",
-            mime="text/markdown",
+            file_name=f"CreditMemo_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.txt",
+            mime="text/plain",
+            use_container_width=True,
+            help="Opens in Notepad on any Windows PC"
         )
+
+        dl2.download_button(
+            label="⬇  Download as .md",
+            data=full_memo,
+            file_name=f"CreditMemo_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.md",
+            mime="text/markdown",
+            use_container_width=True,
+            help="Use with Notion, Obsidian or VS Code"
+        )
+
+        html_memo = f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>ScaleForce Credit Memo — {business_name}</title>
+<style>
+body{{font-family:Arial,sans-serif;max-width:900px;margin:3rem auto;padding:2rem;color:#1a1a1a;line-height:1.7}}
+h1{{color:#c9a84c;border-bottom:3px solid #c9a84c;padding-bottom:0.5rem}}
+h2{{color:#c9a84c;border-bottom:2px solid #c9a84c;padding-bottom:0.3rem;font-size:1rem;letter-spacing:0.1em;text-transform:uppercase;margin-top:2rem}}
+h3{{color:#0a1628}}
+table{{width:100%;border-collapse:collapse;margin:1rem 0}}
+th{{background:#fdf8ee;color:#c9a84c;padding:0.5rem 0.8rem;text-align:left;border:1px solid #e8d9a0;font-size:0.85rem}}
+td{{padding:0.45rem 0.8rem;border:1px solid #dde1e8}}
+tr:nth-child(even) td{{background:#f8f9fb}}
+.hdr{{background:#0a1628;border-top:4px solid #c9a84c;padding:1.5rem 2rem;margin-bottom:2rem;border-radius:4px}}
+.ftr{{color:#aaa;font-size:0.75rem;text-align:center;border-top:1px solid #ddd;margin-top:3rem;padding-top:1rem}}
+</style></head><body>
+<div class="hdr">
+<p style="color:#c9a84c;font-size:0.7rem;letter-spacing:0.2em;text-transform:uppercase;margin:0 0 0.3rem">ScaleForce Capital · Credit Investment Memo</p>
+<h1 style="margin:0 0 0.25rem;font-size:1.6rem;color:#f5f0e8">{business_name}</h1>
+<p style="color:#8a9ab5;font-size:0.85rem;margin:0">Generated: {datetime.today().strftime('%d %B %Y at %H:%M')}</p>
+</div>
+<pre style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:0.92rem">{full_memo}</pre>
+<div class="ftr">ScaleForce Capital · Confidential · AI-assisted — requires analyst review before credit committee submission</div>
+</body></html>"""
+
+        dl3.download_button(
+            label="⬇  Download as .html",
+            data=html_memo,
+            file_name=f"CreditMemo_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.html",
+            mime="text/html",
+            use_container_width=True,
+            help="Opens in browser — print to PDF via File > Print > Save as PDF"
+        )
+
+        st.caption("💡 Tip: The .html file gives the best formatted view and can be printed to PDF (File → Print → Save as PDF)")
+
+        # ── Email delivery ────────────────────────────────────────────────────
+        subject = f"[ScaleForce] Credit Memo — {business_name} — {datetime.today().strftime('%d %b %Y')}"
+        email_sent = send_memo_email(subject, full_memo, business_name, "Credit Investment Memo")
+        if email_sent:
+            st.success("✅ Credit memo emailed to the ScaleForce team inbox.")
 
     except Exception as e:
         st.error(f"❌ Error generating memo: {e}")
