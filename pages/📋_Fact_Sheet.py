@@ -2,6 +2,7 @@ import streamlit as st
 import json
 from datetime import datetime
 from anthropic import Anthropic
+from utils import require_team_login, send_memo_email
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -11,211 +12,179 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# ── Require team login ─────────────────────────────────────────────────────────
+require_team_login()
+
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
 
 :root {
-    --navy:   #0a1628;
-    --ink:    #0f2040;
-    --gold:   #c9a84c;
-    --gold2:  #e8c97a;
-    --cream:  #f5f0e8;
-    --muted:  #8a9ab5;
-    --card:   #111e33;
-    --border: #1e3050;
+    --orange:      #e8610a;
+    --orange-lt:   #f97316;
+    --blue:        #1d4ed8;
+    --black:       #111111;
+    --text:        #1a1a1a;
+    --muted:       #555e6e;
+    --bg:          #ffffff;
+    --bg-soft:     #f8f9fb;
+    --border:      #dde1e8;
+    --border-dark: #c4cad4;
 }
-
 html, body, [data-testid="stAppViewContainer"] {
-    background: var(--navy) !important;
-    color: var(--cream) !important;
+    background: #ffffff !important;
+    color: #1a1a1a !important;
     font-family: 'IBM Plex Sans', sans-serif !important;
 }
-[data-testid="stHeader"] { background: transparent !important; }
+[data-testid="stHeader"]  { background: transparent !important; }
+[data-testid="stSidebar"] { background: #f1f3f7 !important; border-right: 1px solid #dde1e8 !important; }
 h1, h2, h3 { font-family: 'Playfair Display', serif !important; }
-
 .hero {
-    background: linear-gradient(135deg, var(--ink) 0%, #162540 60%, #0d1e35 100%);
-    border: 1px solid var(--border);
-    border-top: 3px solid var(--gold);
-    border-radius: 4px;
+    background: linear-gradient(135deg, #fff7f2 0%, #fff 60%);
+    border: 1px solid #fcd9c4;
+    border-top: 4px solid #e8610a;
+    border-radius: 6px;
     padding: 2.5rem 3rem 2rem;
     margin-bottom: 2rem;
     position: relative;
     overflow: hidden;
 }
-.hero::before {
-    content: '';
-    position: absolute;
-    top: -60px; right: -60px;
-    width: 220px; height: 220px;
-    border: 40px solid rgba(201,168,76,0.06);
-    border-radius: 50%;
-}
 .hero-eyebrow {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.7rem;
     letter-spacing: 0.25em;
-    color: var(--gold);
+    color: #e8610a;
     text-transform: uppercase;
     margin-bottom: 0.5rem;
 }
-.hero h1 {
-    font-size: 2.2rem;
-    font-weight: 900;
-    color: var(--cream);
-    margin: 0 0 0.4rem;
-    line-height: 1.15;
-}
-.hero-sub { color: var(--muted); font-size: 0.95rem; font-weight: 300; }
-
+.hero h1 { font-size: 2.2rem; font-weight: 900; color: #e8610a; margin: 0 0 0.4rem; line-height: 1.15; }
+.hero-sub { color: #555e6e; font-size: 0.95rem; font-weight: 300; }
 .section-label {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.65rem;
+    font-size: 0.68rem;
     letter-spacing: 0.2em;
-    color: var(--gold);
+    color: #e8610a;
     text-transform: uppercase;
+    font-weight: 600;
     margin: 1.75rem 0 0.75rem;
     padding-bottom: 0.4rem;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 2px solid #e8610a;
 }
-
 [data-testid="stTextInput"] input,
 [data-testid="stTextArea"] textarea,
 [data-testid="stNumberInput"] input,
 [data-testid="stSelectbox"] > div {
-    background: #0d1a2e !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 3px !important;
-    color: var(--cream) !important;
+    background: #ffffff !important;
+    border: 1px solid #c4cad4 !important;
+    border-radius: 4px !important;
+    color: #111111 !important;
     font-family: 'IBM Plex Sans', sans-serif !important;
+    font-size: 0.9rem !important;
 }
 [data-testid="stTextInput"] input:focus,
 [data-testid="stTextArea"] textarea:focus,
 [data-testid="stNumberInput"] input:focus {
-    border-color: var(--gold) !important;
-    box-shadow: 0 0 0 2px rgba(201,168,76,0.15) !important;
+    border-color: #1d4ed8 !important;
+    box-shadow: 0 0 0 2px rgba(29,78,216,0.12) !important;
 }
-label { color: var(--muted) !important; font-size: 0.82rem !important; }
-
+label, .stLabel { color: #1d4ed8 !important; font-size: 0.83rem !important; font-weight: 500 !important; }
 [data-testid="stFormSubmitButton"] button,
 .stButton button {
-    background: linear-gradient(135deg, var(--gold), var(--gold2)) !important;
-    color: var(--navy) !important;
+    background: linear-gradient(135deg, #e8610a, #f97316) !important;
+    color: #ffffff !important;
     font-family: 'IBM Plex Mono', monospace !important;
     font-weight: 600 !important;
     font-size: 0.85rem !important;
     letter-spacing: 0.12em !important;
     text-transform: uppercase !important;
     border: none !important;
-    border-radius: 3px !important;
+    border-radius: 4px !important;
     padding: 0.6rem 2.5rem !important;
     transition: opacity 0.2s !important;
 }
-[data-testid="stFormSubmitButton"] button:hover,
-.stButton button:hover { opacity: 0.88 !important; }
-
-.step-indicator {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 2rem;
-    flex-wrap: wrap;
-}
+[data-testid="stFormSubmitButton"] button:hover, .stButton button:hover { opacity: 0.88 !important; }
+.step-indicator { display: flex; gap: 0.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
 .step {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.65rem;
+    font-size: 0.63rem;
     letter-spacing: 0.1em;
     padding: 0.3rem 0.9rem;
-    border-radius: 2px;
-    border: 1px solid var(--border);
-    color: var(--muted);
+    border-radius: 3px;
+    border: 1px solid #c4cad4;
+    color: #555e6e;
     text-transform: uppercase;
+    background: #f8f9fb;
 }
-.step.active {
-    background: rgba(201,168,76,0.12);
-    border-color: var(--gold);
-    color: var(--gold);
-}
-.step.done {
-    background: rgba(34,197,94,0.08);
-    border-color: #22c55e55;
-    color: #22c55e;
-}
-
+.step.active { background: #fff4ee; border-color: #e8610a; color: #e8610a; font-weight: 600; }
+.step.done   { background: #f0fdf4; border-color: #86efac; color: #16a34a; }
 .helper-tip {
-    background: rgba(201,168,76,0.06);
-    border-left: 2px solid var(--gold);
-    border-radius: 0 3px 3px 0;
+    background: #eff6ff;
+    border-left: 3px solid #1d4ed8;
+    border-radius: 0 4px 4px 0;
     padding: 0.6rem 1rem;
-    font-size: 0.8rem;
-    color: var(--muted);
+    font-size: 0.82rem;
+    color: #1d4ed8;
     margin-bottom: 1rem;
 }
-
+.gold-divider { border: none; border-top: 1px solid #dde1e8; margin: 2rem 0; position: relative; }
+.gold-divider::after {
+    content: '◆';
+    position: absolute;
+    left: 50%; top: -0.6rem;
+    transform: translateX(-50%);
+    color: #e8610a;
+    font-size: 0.7rem;
+    background: #ffffff;
+    padding: 0 0.5rem;
+}
 .output-container {
-    background: #060e1a;
-    border: 1px solid var(--border);
-    border-top: 2px solid var(--gold);
-    border-radius: 4px;
+    background: #ffffff;
+    border: 1px solid #dde1e8;
+    border-top: 3px solid #e8610a;
+    border-radius: 6px;
     padding: 2.5rem 3rem;
     font-family: 'IBM Plex Sans', sans-serif;
     line-height: 1.8;
-    color: #d8e0ee;
+    color: #1a1a1a;
 }
-.output-container h1 { color: var(--gold2); font-size: 1.6rem; margin-bottom: 0.25rem; }
+.output-container h1 { color: #e8610a; font-size: 1.6rem; margin-bottom: 0.25rem; }
 .output-container h2 {
-    color: var(--gold);
-    font-size: 0.95rem;
+    color: #e8610a;
+    font-size: 1rem;
     font-family: 'IBM Plex Mono', monospace !important;
-    letter-spacing: 0.15em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    margin-top: 2rem;
-    margin-bottom: 0.75rem;
+    margin-top: 2rem; margin-bottom: 0.75rem;
     padding-bottom: 0.3rem;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 2px solid #e8610a;
 }
-.output-container h3 { color: var(--cream); font-size: 0.95rem; margin: 1rem 0 0.3rem; }
-.output-container strong { color: var(--cream); }
+.output-container h3 { color: #1d4ed8; font-size: 0.97rem; margin: 1rem 0 0.3rem; }
+.output-container strong { color: #111111; }
 .output-container table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.88rem; }
 .output-container th {
-    background: #0d1a2e;
-    color: var(--gold);
+    background: #fff4ee;
+    color: #e8610a;
     padding: 0.5rem 0.8rem;
     text-align: left;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.7rem;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    border: 1px solid var(--border);
+    border: 1px solid #fcd9c4;
 }
-.output-container td { padding: 0.45rem 0.8rem; border: 1px solid var(--border); color: #b8c8de; }
-.output-container tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+.output-container td { padding: 0.45rem 0.8rem; border: 1px solid #dde1e8; color: #1a1a1a; }
+.output-container tr:nth-child(even) td { background: #f8f9fb; }
 .output-container ul { padding-left: 1.4rem; }
-.output-container li { margin-bottom: 0.35rem; }
+.output-container li { margin-bottom: 0.35rem; color: #1a1a1a; }
 .output-container blockquote {
-    border-left: 2px solid var(--gold);
+    border-left: 3px solid #1d4ed8;
     margin: 0.5rem 0;
     padding: 0.4rem 1rem;
-    color: var(--muted);
+    color: #555e6e;
+    background: #eff6ff;
+    border-radius: 0 4px 4px 0;
     font-style: italic;
-}
-
-.gold-divider {
-    border: none;
-    border-top: 1px solid var(--border);
-    margin: 2rem 0;
-    position: relative;
-}
-.gold-divider::after {
-    content: '◆';
-    position: absolute;
-    left: 50%; top: -0.6rem;
-    transform: translateX(-50%);
-    color: var(--gold);
-    font-size: 0.7rem;
-    background: var(--navy);
-    padding: 0 0.5rem;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -711,12 +680,91 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
             unsafe_allow_html=True
         )
 
-        st.download_button(
-            label="⬇  Download Assessment as Markdown",
+        # ── Email delivery ────────────────────────────────────────────────────
+        subject = f"[ScaleForce] Deal Assessment — {business_name} — {datetime.today().strftime('%d %b %Y')}"
+        email_sent = send_memo_email(subject, full_output, business_name, "Deal Fact Sheet Assessment")
+        if email_sent:
+            st.success("✅ Assessment emailed to the ScaleForce team inbox.")
+
+        # ── Download buttons — multiple formats ───────────────────────────────
+        st.markdown("**Download Assessment:**")
+        dl1, dl2, dl3 = st.columns(3)
+
+        dl1.download_button(
+            label="⬇  Download as .txt",
             data=full_output,
-            file_name=f"fact_sheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.md",
-            mime="text/markdown",
+            file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.txt",
+            mime="text/plain",
+            use_container_width=True,
+            help="Opens in Notepad on any Windows PC"
         )
+
+        dl2.download_button(
+            label="⬇  Download as .md",
+            data=full_output,
+            file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.md",
+            mime="text/markdown",
+            use_container_width=True,
+            help="Use with Notion, Obsidian or VS Code"
+        )
+
+        html_output = f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>ScaleForce — {business_name}</title>
+<style>
+body{{font-family:Arial,sans-serif;max-width:900px;margin:3rem auto;padding:2rem;color:#1a1a1a;line-height:1.7}}
+h1{{color:#e8610a;border-bottom:3px solid #e8610a;padding-bottom:0.5rem}}
+h2{{color:#e8610a;border-bottom:2px solid #e8610a;padding-bottom:0.3rem;font-size:1rem;letter-spacing:0.1em;text-transform:uppercase;margin-top:2rem}}
+h3{{color:#1d4ed8}}
+table{{width:100%;border-collapse:collapse;margin:1rem 0}}
+th{{background:#fff4ee;color:#e8610a;padding:0.5rem 0.8rem;text-align:left;border:1px solid #fcd9c4;font-size:0.85rem}}
+td{{padding:0.45rem 0.8rem;border:1px solid #dde1e8}}
+tr:nth-child(even) td{{background:#f8f9fb}}
+.hdr{{background:#fff7f2;border-top:4px solid #e8610a;padding:1.5rem 2rem;margin-bottom:2rem;border-radius:4px}}
+.ftr{{color:#aaa;font-size:0.75rem;text-align:center;border-top:1px solid #ddd;margin-top:3rem;padding-top:1rem}}
+</style></head><body>
+<div class="hdr">
+<p style="color:#e8610a;font-size:0.7rem;letter-spacing:0.2em;text-transform:uppercase;margin:0 0 0.3rem">ScaleForce Capital · Deal Fact Sheet</p>
+<h1 style="margin:0 0 0.25rem;font-size:1.6rem">{business_name}</h1>
+<p style="color:#555;font-size:0.85rem;margin:0">Generated: {datetime.today().strftime('%d %B %Y at %H:%M')}</p>
+</div>
+<pre style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:0.92rem">{full_output}</pre>
+<div class="ftr">ScaleForce Capital · Confidential · AI-assisted — requires analyst review</div>
+</body></html>"""
+
+        dl3.download_button(
+            label="⬇  Download as .html",
+            data=html_output,
+            file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.html",
+            mime="text/html",
+            use_container_width=True,
+            help="Opens in browser — print to PDF via File > Print > Save as PDF"
+        )
+
+        st.caption("💡 Tip: The .html file gives the best view and can be printed to PDF from your browser (File → Print → Save as PDF)")
+
+        # ── Client thank-you (shown when accessed via token URL) ──────────────
+        params = st.query_params
+        if params.get("token"):
+            st.markdown("""
+            <div style="background:#f0fdf4; border:1px solid #86efac; border-top:3px solid #16a34a;
+                        border-radius:6px; padding:2.5rem; text-align:center; margin-top:2rem;">
+                <div style="font-size:2.5rem; margin-bottom:1rem;">✅</div>
+                <h2 style="color:#16a34a; font-family:'Playfair Display',serif; margin:0 0 0.5rem;">
+                    Thank You — Submission Received
+                </h2>
+                <p style="color:#555; font-size:0.92rem; line-height:1.7; max-width:480px; margin:0 auto;">
+                    Your information has been submitted securely to the ScaleForce Capital team.
+                    A consultant will review your application and be in touch within 1–2 business days.
+                </p>
+                <p style="color:#888; font-size:0.8rem; margin-top:1.5rem;">
+                    Questions? Contact us at
+                    <a href="mailto:info@scaleforcecapital.co.za" style="color:#e8610a;">
+                        info@scaleforcecapital.co.za
+                    </a>
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
     except Exception as e:
         st.error(f"❌ Error generating assessment: {e}")
