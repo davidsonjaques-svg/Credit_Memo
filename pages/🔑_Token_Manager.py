@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from utils import require_team_login
 
 st.set_page_config(
-    page_title="Token Manager | ScaleForce Capital",
+    page_title="Token Manager | Inland Fund",
     page_icon="🔑",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -120,7 +120,7 @@ def time_remaining(record):
 # ── Hero ──────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="hero">
-    <div class="hero-eyebrow">ScaleForce Capital · Client Intake</div>
+    <div class="hero-eyebrow">Inland Fund · Client Intake</div>
     <h1>Client Link Generator</h1>
     <div class="hero-sub">Generate secure, single-use links to send clients for self-complete fact sheet intake. Each link expires automatically and can be revoked at any time.</div>
 </div>
@@ -177,7 +177,7 @@ if generate:
         first_name = client_name.split()[0] if client_name else "Sir/Madam"
         email_body = f"""Dear {first_name},
 
-Thank you for your interest in ScaleForce Capital's funding solutions.
+Thank you for your interest in Inland Fund's funding solutions.
 
 To progress your application, please complete our secure online intake form via the link below. This allows us to conduct a preliminary assessment upfront and eliminates unnecessary back-and-forth.
 
@@ -194,8 +194,8 @@ Once submitted, our team will review your application and revert within 1–2 bu
 Should you have any questions, please do not hesitate to contact us.
 
 Kind regards,
-ScaleForce Capital Investment Team
-info@scaleforcecapital.co.za"""
+Inland Fund Investment Team
+info@inlandfund.co.za"""
 
         with st.expander("📧 Email Template — Click to expand, copy and send", expanded=True):
             st.text_area("", value=email_body, height=300,
