@@ -2,7 +2,7 @@ import streamlit as st
 from utils import require_team_login
 
 st.set_page_config(
-    page_title="ScaleForce Capital | Deal Suite",
+    page_title="Inland Fund | Deal Suite",
     page_icon="🏠",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -88,10 +88,10 @@ h1,h2,h3 { font-family: 'Playfair Display', serif !important; }
 # ── Hero ──────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="hero">
-    <div class="hero-eyebrow">ScaleForce Capital · Internal Platform</div>
-    <h1>Deal Intelligence Suite</h1>
+    <div class="hero-eyebrow">Inland Fund · Internal Platform</div>
+    <h1>Deal Assessment Sheet</h1>
     <div class="gold-line"></div>
-    <div class="hero-sub">AI-powered deal intake, credit analysis, and investment memo generation — built for the ScaleForce team.</div>
+    <div class="hero-sub">AI-powered deal intake, credit analysis, and investment memo generation — built for the Inland Fund team.</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -183,6 +183,6 @@ st.markdown("---")
 st.markdown("""
 <div style="text-align:center; font-family:'IBM Plex Mono',monospace; font-size:0.62rem;
             color:#2a3f5f; letter-spacing:0.15em; text-transform:uppercase; padding:1rem 0;">
-ScaleForce Capital · Confidential Internal Platform · All AI outputs require analyst review before submission
+Inland Fund · Confidential Internal Platform · All AI outputs require analyst review before submission
 </div>
 """, unsafe_allow_html=True)
