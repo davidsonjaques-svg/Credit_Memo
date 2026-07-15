@@ -6,7 +6,7 @@ from utils import require_team_login, send_memo_email
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Credit Investment Memo Generator",
+    page_title="Credit Investment Memo | Inland Fund",
     page_icon="🏦",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -670,12 +670,12 @@ tr:nth-child(even) td{{background:#f8f9fb}}
 .ftr{{color:#aaa;font-size:0.75rem;text-align:center;border-top:1px solid #ddd;margin-top:3rem;padding-top:1rem}}
 </style></head><body>
 <div class="hdr">
-<p style="color:#c9a84c;font-size:0.7rem;letter-spacing:0.2em;text-transform:uppercase;margin:0 0 0.3rem">ScaleForce Capital · Credit Investment Memo</p>
+<p style="color:#c9a84c;font-size:0.7rem;letter-spacing:0.2em;text-transform:uppercase;margin:0 0 0.3rem">Inland Fund · Credit Investment Memo</p>
 <h1 style="margin:0 0 0.25rem;font-size:1.6rem;color:#f5f0e8">{business_name}</h1>
 <p style="color:#8a9ab5;font-size:0.85rem;margin:0">Generated: {datetime.today().strftime('%d %B %Y at %H:%M')}</p>
 </div>
 <pre style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:0.92rem">{full_memo}</pre>
-<div class="ftr">ScaleForce Capital · Confidential · AI-assisted — requires analyst review before credit committee submission</div>
+<div class="ftr">Inland Fund · Confidential · AI-assisted — requires analyst review before credit committee submission</div>
 </body></html>"""
 
         dl3.download_button(
@@ -693,7 +693,7 @@ tr:nth-child(even) td{{background:#f8f9fb}}
         subject = f"[ScaleForce] Credit Memo — {business_name} — {datetime.today().strftime('%d %b %Y')}"
         email_sent = send_memo_email(subject, full_memo, business_name, "Credit Investment Memo")
         if email_sent:
-            st.success("✅ Credit memo emailed to the ScaleForce team inbox.")
+            st.success("✅ Credit memo emailed to the Inland Fund team inbox.")
 
     except Exception as e:
         st.error(f"❌ Error generating memo: {e}")
