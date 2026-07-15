@@ -13,7 +13,13 @@ st.set_page_config(
 )
 
 # ── Require team login ─────────────────────────────────────────────────────────
-require_team_login()
+# ── Detect client token access ──────────────────────────────────────────────
+_token = st.query_params.get("token", "")
+_is_client = bool(_token)
+
+# Team login only for internal access (not client token links)
+if not _is_client:
+    require_team_login()
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -186,6 +192,20 @@ label, .stLabel { color: #1d4ed8 !important; font-size: 0.83rem !important; font
     border-radius: 0 4px 4px 0;
     font-style: italic;
 }
+</style>
+""", unsafe_allow_html=True)
+
+# ── Hide sidebar/nav entirely for client token access ────────────────────────
+if _is_client:
+    st.markdown("""
+<style>
+[data-testid="stSidebar"]        { display:none !important; }
+[data-testid="stSidebarNav"]     { display:none !important; }
+[data-testid="collapsedControl"] { display:none !important; }
+#MainMenu                        { display:none !important; }
+footer                           { display:none !important; }
+[data-testid="stHeader"]         { display:none !important; }
+header                           { display:none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -680,6 +700,10 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
             unsafe_allow_html=True
         )
 
+        # ── For clients: clear the output display (they should not see the memo)
+        if _is_client:
+            output_placeholder.empty()
+
         # ── Email delivery ────────────────────────────────────────────────────
         subject = f"[ScaleForce] Deal Assessment — {business_name} — {datetime.today().strftime('%d %b %Y')}"
         email_sent = send_memo_email(subject, full_output, business_name, "Deal Fact Sheet Assessment")
@@ -687,8 +711,9 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
             st.success("✅ Assessment emailed to the Inland Fund team inbox.")
 
         # ── Download buttons — multiple formats ───────────────────────────────
-        st.markdown("**Download Assessment:**")
-        dl1, dl2, dl3 = st.columns(3)
+        if not _is_client:
+            st.markdown("**Download Assessment:**")
+            dl1, dl2, dl3 = st.columns(3)
 
         dl1.download_button(
             label="⬇  Download as .txt",
