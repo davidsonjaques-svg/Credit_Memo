@@ -1,5 +1,6 @@
 import streamlit as st
 import json
+import base64
 from datetime import datetime
 from anthropic import Anthropic
 from utils import require_team_login, send_memo_email
@@ -233,6 +234,125 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# BANK STATEMENT ANALYZER (runs BEFORE the form — needs interactive processing)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Initialise session state for bank analysis results
+if "bank_analysis" not in st.session_state:
+    st.session_state.bank_analysis = None
+
+st.markdown('<div class="section-label">🤖 Automated Bank Statement Analysis (Optional)</div>', unsafe_allow_html=True)
+st.markdown('<div class="helper-tip">💡 Upload one or more text-based PDF bank statements (downloaded from online banking). The AI will analyse them and auto-populate Section 06 below. You can review and edit before submitting.</div>', unsafe_allow_html=True)
+
+bank_col1, bank_col2 = st.columns([2, 1])
+with bank_col1:
+    uploaded_statements = st.file_uploader(
+        "Upload Bank Statement PDF(s)",
+        type=["pdf"],
+        accept_multiple_files=True,
+        help="Text-based PDFs only (not scanned images). Downloaded directly from FNB, Absa, Standard Bank, Nedbank etc.",
+        key="bank_stmt_uploader"
+    )
+with bank_col2:
+    st.markdown("<div style='height:1.8rem'></div>", unsafe_allow_html=True)
+    analyse_clicked = st.button("🔍  Analyse Statements", use_container_width=True, key="analyse_btn")
+
+if analyse_clicked:
+    if not uploaded_statements:
+        st.warning("Please upload at least one PDF bank statement first.")
+    else:
+        try:
+            api_key = st.secrets["ANTHROPIC_API_KEY"]
+        except Exception:
+            import os
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+
+        if not api_key:
+            st.error("⚠️ ANTHROPIC_API_KEY not configured — cannot run analysis.")
+        else:
+            with st.spinner("🤖 Analysing bank statements… this may take 30–60 seconds."):
+                try:
+                    client = Anthropic(api_key=api_key)
+
+                    # Build document blocks from uploaded PDFs
+                    doc_blocks = []
+                    for f in uploaded_statements:
+                        pdf_bytes = f.read()
+                        b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
+                        doc_blocks.append({
+                            "type": "document",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "application/pdf",
+                                "data": b64,
+                            },
+                        })
+
+                    analysis_prompt = """You are a South African credit analyst reviewing bank statements for a funding application.
+
+Analyse the attached bank statement PDF(s) and extract the following. Return your answer as a strict JSON object with NO markdown, NO code fences, and NO preamble — just the raw JSON:
+
+{
+  "months_reviewed": "<number of distinct months covered across all statements, as a string e.g. '3'>",
+  "avg_monthly_credits": <average total monthly credit/deposit inflow in ZAR as a number, no currency symbol or commas>,
+  "rd_count": <total number of returned debits / unpaid debit orders / R/D entries observed as an integer>,
+  "overdraft_detected": "<if an overdraft facility or limit is visible, describe it e.g. 'FNB overdraft, limit approx R200,000' — else 'None visible'>",
+  "findings_commentary": "<a professional 4-8 line analyst commentary in plain text with each point on a new line. Cover: average monthly turnover/credits, whether balances stay within limits or show excesses, presence and frequency of returned debits, regular salary payments, SARS/tax payments visible or absent, large or unusual debits, and overall cash flow consistency. Write in the terse professional style of a credit analyst.>",
+  "confidence_note": "<one short sentence on data quality — e.g. 'High confidence, clean text-based statements' or 'Some values estimated due to formatting'>"
+}
+
+Base everything strictly on what is actually in the statements. Do not invent figures. If something cannot be determined, say so in the relevant field."""
+
+                    message_content = doc_blocks + [{"type": "text", "text": analysis_prompt}]
+
+                    response = client.messages.create(
+                        model="claude-sonnet-4-5",
+                        max_tokens=2000,
+                        messages=[{"role": "user", "content": message_content}],
+                    )
+
+                    raw = "".join(block.text for block in response.content if hasattr(block, "text"))
+                    # Clean any accidental code fences
+                    raw = raw.replace("```json", "").replace("```", "").strip()
+
+                    parsed = json.loads(raw)
+                    st.session_state.bank_analysis = parsed
+                    st.success("✅ Analysis complete — Section 06 below has been auto-populated. Review and edit as needed.")
+
+                except json.JSONDecodeError:
+                    st.error("Could not parse the AI response. The statement format may be unusual — please fill Section 06 manually.")
+                except Exception as e:
+                    st.error(f"Analysis failed: {e}")
+                    st.info("You can still fill Section 06 manually below.")
+
+# Show current analysis summary if present
+if st.session_state.bank_analysis:
+    ba = st.session_state.bank_analysis
+    st.markdown(f"""
+    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-left:3px solid #1d4ed8;
+                border-radius:0 4px 4px 0; padding:1rem 1.25rem; margin:0.5rem 0 1.5rem;">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:0.62rem; letter-spacing:0.15em;
+                    color:#1d4ed8; text-transform:uppercase; margin-bottom:0.5rem;">
+            🤖 AI Analysis Result
+        </div>
+        <div style="color:#1a1a1a; font-size:0.85rem; line-height:1.6;">
+            <strong>Months:</strong> {ba.get('months_reviewed','—')} &nbsp;|&nbsp;
+            <strong>Avg Monthly Credits:</strong> R {ba.get('avg_monthly_credits',0):,.0f} &nbsp;|&nbsp;
+            <strong>Returned Debits:</strong> {ba.get('rd_count','—')} &nbsp;|&nbsp;
+            <strong>Overdraft:</strong> {ba.get('overdraft_detected','—')}
+        </div>
+        <div style="color:#555; font-size:0.78rem; margin-top:0.5rem; font-style:italic;">
+            {ba.get('confidence_note','')}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("🗑  Clear Analysis", key="clear_bank"):
+        st.session_state.bank_analysis = None
+        st.rerun()
+
+st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # FORM
 # ═══════════════════════════════════════════════════════════════════════════════
 with st.form("fact_sheet_form", clear_on_submit=False):
@@ -408,17 +528,33 @@ with st.form("fact_sheet_form", clear_on_submit=False):
 
     # ── SECTION 6: Bank Statement Analysis ───────────────────────────────────
     st.markdown('<div class="section-label">06 · Bank Statement Analysis</div>', unsafe_allow_html=True)
-    st.markdown('<div class="helper-tip">💡 Typically cover 3–6 months. Note RDs, unusual debits, overdraft usage, and cash flow patterns.</div>', unsafe_allow_html=True)
+
+    # Pull AI analysis defaults if available
+    _ba = st.session_state.get("bank_analysis") or {}
+    if _ba:
+        st.markdown('<div class="helper-tip">✅ Fields below pre-filled by AI analysis. Review and adjust before submitting.</div>', unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="helper-tip">💡 Typically cover 3–6 months. Note RDs, unusual debits, overdraft usage, and cash flow patterns. (Or use the AI analyser above to auto-fill.)</div>', unsafe_allow_html=True)
+
+    # Determine default month selection
+    _month_options = ["1", "2", "3", "4", "5", "6", "12", "Not yet received"]
+    _ai_months = str(_ba.get("months_reviewed", "")).strip()
+    _month_index = _month_options.index(_ai_months) if _ai_months in _month_options else 5
 
     c1, c2 = st.columns(2)
-    months_bank_stmts   = c1.selectbox("Months of Bank Statements Reviewed", ["1", "2", "3", "4", "5", "6", "12", "Not yet received"])
-    avg_monthly_credits = c2.number_input("Average Monthly Credits (ZAR)", min_value=0.0, step=1000.0, format="%.2f")
+    months_bank_stmts   = c1.selectbox("Months of Bank Statements Reviewed", _month_options, index=_month_index)
+    avg_monthly_credits = c2.number_input("Average Monthly Credits (ZAR)", min_value=0.0, step=1000.0, format="%.2f",
+                                          value=float(_ba.get("avg_monthly_credits", 0.0)))
 
     c1, c2 = st.columns(2)
-    rd_count            = c1.number_input("Number of Returned Debits (RDs) Noted", min_value=0, step=1)
-    overdraft_facility  = c2.text_input("Overdraft Facility (Lender, Limit, Rate)", placeholder="e.g. FNB, R200,000 @ Prime+2%")
+    rd_count            = c1.number_input("Number of Returned Debits (RDs) Noted", min_value=0, step=1,
+                                          value=int(_ba.get("rd_count", 0)))
+    overdraft_facility  = c2.text_input("Overdraft Facility (Lender, Limit, Rate)",
+                                        value=_ba.get("overdraft_detected", "") if _ba.get("overdraft_detected", "") != "None visible" else "",
+                                        placeholder="e.g. FNB, R200,000 @ Prime+2%")
 
-    bank_analysis_notes = st.text_area("Bank Statement Findings & Commentary *", height=120,
+    bank_analysis_notes = st.text_area("Bank Statement Findings & Commentary *", height=140,
+        value=_ba.get("findings_commentary", ""),
         placeholder="Summarise key findings:\n- Average monthly turnover vs declared revenue\n- Any RDs — dates, amounts, frequency\n- Unusual or unexplained large debits\n- Cash flow consistency / irregularities\n- Salary payments, SARS payments, loan repayments visible")
 
     st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
