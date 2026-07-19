@@ -459,35 +459,29 @@ with st.form("fact_sheet_form", clear_on_submit=False):
 
     # ── SECTION 5: Financial Analysis ────────────────────────────────────────
     st.markdown('<div class="section-label">05 · Financial Analysis</div>', unsafe_allow_html=True)
-    st.markdown('<div class="helper-tip">💡 Select the two financial years being compared, then enter figures. The third column captures the latest management accounts. All figures in ZAR.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="helper-tip">💡 Select the financial year for each column header, then enter figures below. The third column captures the latest management accounts. All figures in ZAR.</div>', unsafe_allow_html=True)
 
-    # ── Period selectors ──────────────────────────────────────────────────────
     _fy_options = [f"FY{y}" for y in range(2021, 2031)]   # FY2021 → FY2030
     _month_count_options = ["1 month", "2 months", "3 months", "4 months", "5 months",
                             "6 months", "7 months", "8 months", "9 months", "10 months",
                             "11 months", "12 months"]
 
-    st.markdown("**Reporting Periods**")
-    p1, p2, p3, p4 = st.columns([2, 2, 2, 2])
-    fy_period_1 = p1.selectbox("Financial Year (Period 1)", _fy_options,
-                               index=_fy_options.index("FY2024"))
-    fy_period_2 = p2.selectbox("Financial Year (Period 2)", _fy_options,
-                               index=_fy_options.index("FY2025"))
-    mgt_months  = p3.selectbox("Mgt Accounts — Months Reported", _month_count_options,
-                               index=2, help="How many months of the current year the management accounts cover")
-    mgt_as_at   = p4.text_input("Mgt Accounts As-At Date", placeholder="e.g. 31 Aug 2025")
+    # Management accounts as-at date + months (kept above the table, compact)
+    ma1, ma2 = st.columns([1, 3])
+    mgt_months  = ma1.selectbox("Mgt Accounts — Months Reported", _month_count_options,
+                                index=2, help="How many months of the current year the management accounts cover")
+    mgt_as_at   = ma2.text_input("Mgt Accounts As-At Date", placeholder="e.g. 31 August 2025")
 
-    _mgt_label = f"Mgt Accs ({mgt_months})"
-
-    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
-
-    # Income Statement
+    # ── Income Statement — dropdowns sit IN the header row, in line with Line Item ──
     st.markdown("**Income Statement**")
     c0, c1, c2, c3 = st.columns([2,2,2,2])
-    c0.markdown("*Line Item*")
-    c1.markdown(f"*{fy_period_1}*")
-    c2.markdown(f"*{fy_period_2}*")
-    c3.markdown(f"*{_mgt_label}*")
+    c0.markdown("<div style='padding-top:0.55rem;font-style:italic;color:#1d4ed8;font-weight:500;'>Line Item</div>", unsafe_allow_html=True)
+    fy_period_1 = c1.selectbox("Period 1", _fy_options, index=_fy_options.index("FY2024"),
+                               label_visibility="collapsed", key="fy_p1")
+    fy_period_2 = c2.selectbox("Period 2", _fy_options, index=_fy_options.index("FY2025"),
+                               label_visibility="collapsed", key="fy_p2")
+    _mgt_label = f"Mgt Accs ({mgt_months})"
+    c3.markdown(f"<div style='padding-top:0.55rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
 
     revenue_2024    = c1.number_input("Revenue P1",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     revenue_2025    = c2.number_input("Revenue P2",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
@@ -521,10 +515,10 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     # Balance Sheet Ratios
     st.markdown("**Balance Sheet Inputs**")
     c0, c1, c2, c3 = st.columns([2,2,2,2])
-    c0.markdown("*Line Item*")
-    c1.markdown(f"*{fy_period_1}*")
-    c2.markdown(f"*{fy_period_2}*")
-    c3.markdown(f"*{_mgt_label}*")
+    c0.markdown("<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>Line Item</div>", unsafe_allow_html=True)
+    c1.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{fy_period_1}</div>", unsafe_allow_html=True)
+    c2.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{fy_period_2}</div>", unsafe_allow_html=True)
+    c3.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
 
     curr_assets_2024  = c1.number_input("CA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     curr_assets_2025  = c2.number_input("CA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
