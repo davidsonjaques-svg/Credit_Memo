@@ -459,31 +459,53 @@ with st.form("fact_sheet_form", clear_on_submit=False):
 
     # ── SECTION 5: Financial Analysis ────────────────────────────────────────
     st.markdown('<div class="section-label">05 · Financial Analysis</div>', unsafe_allow_html=True)
-    st.markdown('<div class="helper-tip">💡 Populate figures for the two most recent financial years and latest management accounts. All figures in ZAR.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="helper-tip">💡 Select the two financial years being compared, then enter figures. The third column captures the latest management accounts. All figures in ZAR.</div>', unsafe_allow_html=True)
+
+    # ── Period selectors ──────────────────────────────────────────────────────
+    _fy_options = [f"FY{y}" for y in range(2021, 2031)]   # FY2021 → FY2030
+    _month_count_options = ["1 month", "2 months", "3 months", "4 months", "5 months",
+                            "6 months", "7 months", "8 months", "9 months", "10 months",
+                            "11 months", "12 months"]
+
+    st.markdown("**Reporting Periods**")
+    p1, p2, p3, p4 = st.columns([2, 2, 2, 2])
+    fy_period_1 = p1.selectbox("Financial Year (Period 1)", _fy_options,
+                               index=_fy_options.index("FY2024"))
+    fy_period_2 = p2.selectbox("Financial Year (Period 2)", _fy_options,
+                               index=_fy_options.index("FY2025"))
+    mgt_months  = p3.selectbox("Mgt Accounts — Months Reported", _month_count_options,
+                               index=2, help="How many months of the current year the management accounts cover")
+    mgt_as_at   = p4.text_input("Mgt Accounts As-At Date", placeholder="e.g. 31 Aug 2025")
+
+    _mgt_label = f"Mgt Accs ({mgt_months})"
+
+    st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
     # Income Statement
     st.markdown("**Income Statement**")
-    col_labels = ["", "FY 2024 (ZAR)", "FY 2025 (ZAR)", "Man Accs – Latest (ZAR)"]
     c0, c1, c2, c3 = st.columns([2,2,2,2])
-    c0.markdown("*Line Item*"); c1.markdown("*FY 2024*"); c2.markdown("*FY 2025*"); c3.markdown("*Man Accs*")
+    c0.markdown("*Line Item*")
+    c1.markdown(f"*{fy_period_1}*")
+    c2.markdown(f"*{fy_period_2}*")
+    c3.markdown(f"*{_mgt_label}*")
 
-    revenue_2024    = c1.number_input("Revenue 2024",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    revenue_2025    = c2.number_input("Revenue 2025",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    revenue_2024    = c1.number_input("Revenue P1",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    revenue_2025    = c2.number_input("Revenue P2",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     revenue_mgt     = c3.number_input("Revenue MgtAccs",min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Revenue / Turnover")
 
-    gp_2024         = c1.number_input("GP 2024",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    gp_2025         = c2.number_input("GP 2025",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    gp_2024         = c1.number_input("GP P1",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    gp_2025         = c2.number_input("GP P2",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     gp_mgt          = c3.number_input("GP Mgt",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Gross Profit")
 
-    ebitda_2024     = c1.number_input("EBITDA 2024", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    ebitda_2025     = c2.number_input("EBITDA 2025", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    ebitda_2024     = c1.number_input("EBITDA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    ebitda_2025     = c2.number_input("EBITDA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     ebitda_mgt      = c3.number_input("EBITDA Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("EBITDA")
 
-    np_2024         = c1.number_input("NP 2024", step=1000.0, format="%.0f", label_visibility="collapsed")
-    np_2025         = c2.number_input("NP 2025", step=1000.0, format="%.0f", label_visibility="collapsed")
+    np_2024         = c1.number_input("NP P1", step=1000.0, format="%.0f", label_visibility="collapsed")
+    np_2025         = c2.number_input("NP P2", step=1000.0, format="%.0f", label_visibility="collapsed")
     np_mgt          = c3.number_input("NP Mgt",  step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Net Profit")
 
@@ -499,25 +521,28 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     # Balance Sheet Ratios
     st.markdown("**Balance Sheet Inputs**")
     c0, c1, c2, c3 = st.columns([2,2,2,2])
-    c0.markdown("*Line Item*"); c1.markdown("*FY 2024*"); c2.markdown("*FY 2025*"); c3.markdown("*Man Accs*")
+    c0.markdown("*Line Item*")
+    c1.markdown(f"*{fy_period_1}*")
+    c2.markdown(f"*{fy_period_2}*")
+    c3.markdown(f"*{_mgt_label}*")
 
-    curr_assets_2024  = c1.number_input("CA 2024", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    curr_assets_2025  = c2.number_input("CA 2025", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    curr_assets_2024  = c1.number_input("CA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    curr_assets_2025  = c2.number_input("CA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     curr_assets_mgt   = c3.number_input("CA Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Current Assets")
 
-    curr_liab_2024    = c1.number_input("CL 2024", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    curr_liab_2025    = c2.number_input("CL 2025", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    curr_liab_2024    = c1.number_input("CL P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    curr_liab_2025    = c2.number_input("CL P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     curr_liab_mgt     = c3.number_input("CL Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Current Liabilities")
 
-    total_debt_2024   = c1.number_input("TD 2024", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    total_debt_2025   = c2.number_input("TD 2025", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    total_debt_2024   = c1.number_input("TD P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    total_debt_2025   = c2.number_input("TD P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     total_debt_mgt    = c3.number_input("TD Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Total Debt / Liabilities")
 
-    equity_2024       = c1.number_input("EQ 2024", step=1000.0, format="%.0f", label_visibility="collapsed")
-    equity_2025       = c2.number_input("EQ 2025", step=1000.0, format="%.0f", label_visibility="collapsed")
+    equity_2024       = c1.number_input("EQ P1", step=1000.0, format="%.0f", label_visibility="collapsed")
+    equity_2025       = c2.number_input("EQ P2", step=1000.0, format="%.0f", label_visibility="collapsed")
     equity_mgt        = c3.number_input("EQ Mgt",  step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Total Equity")
 
@@ -637,15 +662,15 @@ if submitted:
     # ── Quick risk flags ───────────────────────────────────────────────────────
     flags = []
     if ratios["current_ratio_2025"] and ratios["current_ratio_2025"] < 1.0:
-        flags.append(("CRITICAL", "Current ratio below 1.0 in FY2025 — cannot cover short-term obligations"))
+        flags.append(("CRITICAL", f"Current ratio below 1.0 in {fy_period_2} — cannot cover short-term obligations"))
     if ratios["debt_to_equity_2025"] and ratios["debt_to_equity_2025"] > 3.0:
-        flags.append(("HIGH", "Debt/Equity > 3.0x in FY2025 — highly leveraged"))
+        flags.append(("HIGH", f"Debt/Equity > 3.0x in {fy_period_2} — highly leveraged"))
     if rd_count >= 3:
         flags.append(("HIGH", f"{rd_count} returned debits noted on bank statements"))
     if "Critical" in key_person_risk or "High" in key_person_risk:
         flags.append(("MEDIUM", "Key person dependency — succession risk identified"))
     if np_margin_2025 < 0:
-        flags.append(("HIGH", "Net profit negative in FY2025 — business is loss-making"))
+        flags.append(("HIGH", f"Net profit negative in {fy_period_2} — business is loss-making"))
     if "Judgement" in credit_check_entrepreneur:
         flags.append(("HIGH", "Adverse credit finding on entrepreneur"))
     if years_in_business < 2:
@@ -688,19 +713,26 @@ if submitted:
         "seasonality": seasonality,
         "seasonality_detail": seasonality_detail,
         "financials": {
+            "reporting_periods": {
+                "period_1_label": fy_period_1,
+                "period_2_label": fy_period_2,
+                "mgt_accounts_label": _mgt_label,
+                "mgt_months_reported": mgt_months,
+                "mgt_as_at_date": mgt_as_at,
+            },
             "income_statement": {
-                "revenue":     {"2024": revenue_2024, "2025": revenue_2025, "mgt": revenue_mgt},
-                "gross_profit":{"2024": gp_2024,      "2025": gp_2025,      "mgt": gp_mgt},
-                "ebitda":      {"2024": ebitda_2024,  "2025": ebitda_2025,  "mgt": ebitda_mgt},
-                "net_profit":  {"2024": np_2024,      "2025": np_2025,      "mgt": np_mgt},
+                "revenue":     {fy_period_1: revenue_2024, fy_period_2: revenue_2025, "mgt_accounts": revenue_mgt},
+                "gross_profit":{fy_period_1: gp_2024,      fy_period_2: gp_2025,      "mgt_accounts": gp_mgt},
+                "ebitda":      {fy_period_1: ebitda_2024,  fy_period_2: ebitda_2025,  "mgt_accounts": ebitda_mgt},
+                "net_profit":  {fy_period_1: np_2024,      fy_period_2: np_2025,      "mgt_accounts": np_mgt},
             },
             "derived_margins": ratios,
             "income_statement_notes": income_stmt_notes,
             "balance_sheet": {
-                "current_assets":     {"2024": curr_assets_2024, "2025": curr_assets_2025, "mgt": curr_assets_mgt},
-                "current_liabilities":{"2024": curr_liab_2024,   "2025": curr_liab_2025,   "mgt": curr_liab_mgt},
-                "total_debt":         {"2024": total_debt_2024,  "2025": total_debt_2025,  "mgt": total_debt_mgt},
-                "total_equity":       {"2024": equity_2024,      "2025": equity_2025,      "mgt": equity_mgt},
+                "current_assets":     {fy_period_1: curr_assets_2024, fy_period_2: curr_assets_2025, "mgt_accounts": curr_assets_mgt},
+                "current_liabilities":{fy_period_1: curr_liab_2024,   fy_period_2: curr_liab_2025,   "mgt_accounts": curr_liab_mgt},
+                "total_debt":         {fy_period_1: total_debt_2024,  fy_period_2: total_debt_2025,  "mgt_accounts": total_debt_mgt},
+                "total_equity":       {fy_period_1: equity_2024,      fy_period_2: equity_2025,      "mgt_accounts": equity_mgt},
             },
             "balance_sheet_notes": balance_sheet_notes,
         },
@@ -740,7 +772,7 @@ RULES:
 - Where data is missing or zero, flag it explicitly as a gap requiring further information.
 - Currency is ZAR. Format: R 1,250,000 (not 1250000).
 - Calculate and present ratios in tables with benchmark comparisons.
-- Identify trends across FY2024 → FY2025 → Management Accounts.
+- Identify trends across the two selected financial years and the latest management accounts (note the management accounts may cover only part of a year — treat them accordingly).
 - Flag anomalies, inconsistencies, and items requiring further due diligence.
 - Use Markdown formatting: ## for sections, ### for sub-sections, bold for key figures, tables where applicable."""
 
@@ -773,15 +805,17 @@ Describe each revenue stream, payment terms, and margin profile. Comment on reve
 ## 5. FINANCIAL ANALYSIS
 
 ### 5.1 Income Statement Summary
-Present a 3-year comparative table (FY2024 | FY2025 | Mgt Accs):
-| Metric | FY2024 | FY2025 | Mgt Accs | Trend |
+Present a 3-period comparative table using the ACTUAL period labels from the data (Period 1 = {fy_period_1}, Period 2 = {fy_period_2}, and "{_mgt_label}" for the management accounts column):
+| Metric | {fy_period_1} | {fy_period_2} | {_mgt_label} | Trend |
 Include: Revenue, Gross Profit, GP Margin %, EBITDA, Net Profit, NP Margin %
 
-Trend analysis: highlight growth rates, margin compression/expansion, and any anomalies. Note items requiring further DD.
+IMPORTANT: The management accounts cover {mgt_months} only (as at {mgt_as_at}), so do NOT compare them like-for-like against the full financial years. When commenting, annualise or contextualise the management-account figures appropriately (e.g. note that {mgt_months} of trading is tracking ahead of / behind the prior full year on a pro-rata basis).
+
+Trend analysis: highlight growth rates between {fy_period_1} and {fy_period_2}, margin compression/expansion, and any anomalies. Note items requiring further DD.
 
 ### 5.2 Balance Sheet & Ratio Analysis
-Present calculated ratios across all periods:
-| Ratio | FY2024 | FY2025 | Mgt Accs | Benchmark | Status |
+Present calculated ratios across all periods using the same labels:
+| Ratio | {fy_period_1} | {fy_period_2} | {_mgt_label} | Benchmark | Status |
 Include: Current Ratio (≥1.5), Debt/Equity (≤2.0x)
 
 Comment on balance sheet trends and flag anomalies.
