@@ -349,7 +349,84 @@ if st.session_state.bank_analysis:
     if st.button("🗑  Clear Analysis", key="clear_bank"):
         st.session_state.bank_analysis = None
         st.rerun()
+# ═══════════════════════════════════════════════════════════════════════════════
+# FINANCIAL STATEMENT ANALYZER (runs BEFORE the form — mirrors Bank Statement block)
+# ═══════════════════════════════════════════════════════════════════════════════
 
+if "financial_extraction" not in st.session_state:
+    st.session_state.financial_extraction = None
+
+st.markdown('<div class="section-label">🤖 Automated Financial Statement Extraction (Optional)</div>', unsafe_allow_html=True)
+st.markdown('<div class="helper-tip">💡 Upload the Annual Financial Statements or Management Accounts PDF. The AI will extract key figures and pre-fill Section 05 below. Review and edit before submitting.</div>', unsafe_allow_html=True)
+
+fin_col1, fin_col2 = st.columns([2, 1])
+with fin_col1:
+    uploaded_financials = st.file_uploader(
+        "Upload Financial Statements PDF",
+        type=["pdf"],
+        help="Text-based or scanned PDFs both work. AFS, management accounts, or audit reports.",
+        key="financials_uploader"
+    )
+with fin_col2:
+    st.markdown("<div style='height:1.8rem'></div>", unsafe_allow_html=True)
+    extract_fin_clicked = st.button("🔍  Extract Financials", use_container_width=True, key="extract_fin_btn")
+
+if extract_fin_clicked:
+    if not uploaded_financials:
+        st.warning("Please upload a financials PDF first.")
+    else:
+        try:
+            api_key = st.secrets["ANTHROPIC_API_KEY"]
+        except Exception:
+            import os
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+
+        if not api_key:
+            st.error("⚠️ ANTHROPIC_API_KEY not configured — cannot run extraction.")
+        else:
+            with st.spinner("🤖 Extracting financial data… this may take 30–60 seconds."):
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                    tmp.write(uploaded_financials.getvalue())
+                    tmp_path = tmp.name
+
+                try:
+                    result = extract_financials(tmp_path, api_key=api_key)
+                    if result.success:
+                        st.session_state.financial_extraction = to_fact_sheet_defaults(result)
+                        st.success("✅ Financials extracted — Section 05 below has been pre-filled. Review and edit as needed.")
+                    else:
+                        st.error(f"Extraction failed: {result.warning or 'unknown error'}")
+                except Exception as e:
+                    st.error(f"Extraction failed: {e}")
+                    st.info("You can still fill Section 05 manually below.")
+
+# Show current extraction summary if present (same visual pattern as bank analysis card)
+_fe = st.session_state.get("financial_extraction") or {}
+if _fe:
+    st.markdown(f"""
+    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-left:3px solid #1d4ed8;
+                border-radius:0 4px 4px 0; padding:1rem 1.25rem; margin:0.5rem 0 1.5rem;">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:0.62rem; letter-spacing:0.15em;
+                    color:#1d4ed8; text-transform:uppercase; margin-bottom:0.5rem;">
+            🤖 AI Extraction Result — {_fe.get('company_name','')}
+        </div>
+        <div style="color:#1a1a1a; font-size:0.85rem; line-height:1.6;">
+            <strong>Periods found:</strong> {', '.join(_fe.get('periods', [])) or '—'} &nbsp;|&nbsp;
+            <strong>Most recent revenue:</strong> R {_fe.get('revenue_p2', 0):,.0f}
+        </div>
+        <div style="color:#555; font-size:0.78rem; margin-top:0.5rem; font-style:italic;">
+            {_fe.get('extraction_notes','')}
+        </div>
+        <div style="color:#b45309; font-size:0.75rem; margin-top:0.5rem;">
+            ⚠️ Confirm the FY dropdowns below (Period 1 / Period 2) actually match these extracted periods before submitting.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("🗑  Clear Extraction", key="clear_financials"):
+        st.session_state.financial_extraction = None
+        st.rerun()
+
+st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
 st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
