@@ -2,3 +2,5 @@ streamlit>=1.35.0
 anthropic>=0.25.0
 pdfplumber
 pdf2image
+markdown
+jinja2
