@@ -604,7 +604,7 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     c0.markdown("Current Assets")
 
     curr_liab_2024    = c1.number_input("CL P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("cl_p1", 0.0))
-    curr_liab_2025    = c2.number_input("CL P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed". value=_fe.get("cl_p2", 0.0))
+    curr_liab_2025    = c2.number_input("CL P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("cl_p2", 0.0))
     curr_liab_mgt     = c3.number_input("CL Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Current Liabilities")
 
