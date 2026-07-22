@@ -946,7 +946,32 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
         # ── For clients: clear the output display (they should not see the memo)
         if _is_client:
             output_placeholder.empty()
-
+            
+        # ── Branded PDF generation ──────────────────────────────────────────────
+        pdf_bytes = None
+        if not _is_client:
+            try:
+                with st.spinner("🎨 Rendering branded PDF..."):
+                    pdf_path = f"/tmp/memo_{business_name.replace(' ', '_')}.pdf"
+                    render_deal_pdf(
+                        payload=payload,
+                        full_output_markdown=full_output,
+                        flags=flags,
+                        fy_period_1=fy_period_1,
+                        fy_period_2=fy_period_2,
+                        revenue_2024=revenue_2024, revenue_2025=revenue_2025,
+                        ebitda_2024=ebitda_2024, ebitda_2025=ebitda_2025,
+                        curr_assets_2024=curr_assets_2024, curr_assets_2025=curr_assets_2025,
+                        curr_liab_2024=curr_liab_2024, curr_liab_2025=curr_liab_2025,
+                        total_debt_2024=total_debt_2024, total_debt_2025=total_debt_2025,
+                        equity_2024=equity_2024, equity_2025=equity_2025,
+                        output_path=pdf_path,
+                    )
+                    with open(pdf_path, "rb") as f:
+                        pdf_bytes = f.read()
+            except Exception as e:
+                st.warning(f"⚠️ Branded PDF generation failed: {e} — other download formats still available below.")   
+            
         # ── Email delivery ────────────────────────────────────────────────────
         subject = f"[ScaleForce] Deal Assessment — {business_name} — {datetime.today().strftime('%d %b %Y')}"
         email_sent = send_memo_email(subject, full_output, business_name, "Deal Fact Sheet Assessment")
@@ -956,7 +981,7 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
         # ── Download buttons — multiple formats ───────────────────────────────
         if not _is_client:
             st.markdown("**Download Assessment:**")
-            dl1, dl2, dl3 = st.columns(3)
+            dl1, dl2, dl3 = st.columns(4)
 
         dl1.download_button(
             label="⬇  Download as .txt",
