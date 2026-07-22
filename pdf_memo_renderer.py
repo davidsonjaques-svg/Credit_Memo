@@ -8,17 +8,21 @@ navy/gold branded PDF: cover page + charts + the memo itself.
 Does NOT change how the memo content is generated - Claude's markdown
 output is converted to HTML and dropped into the branded shell as-is.
 
-Requires: markdown, jinja2, wkhtmltopdf (system binary)
-    pip install markdown jinja2 --break-system-packages
-    packages.txt must include: wkhtmltopdf
+Requires: markdown, jinja2, weasyprint
+    pip install markdown jinja2 weasyprint --break-system-packages
+
+NOTE: uses WeasyPrint instead of wkhtmltopdf. wkhtmltopdf was dropped from
+Debian's apt repos (unmaintained, depended on a patched Qt/WebKit Debian no
+longer ships) - it will fail to install via packages.txt on Streamlit Cloud's
+current base image. WeasyPrint is pure pip + a handful of apt libs that are
+still maintained; see packages.txt notes below.
 """
 
-import subprocess
-import tempfile
 from pathlib import Path
 
 import markdown as md
 from jinja2 import Environment, FileSystemLoader
+from weasyprint import HTML
 
 from charts import (
     revenue_ebitda_chart,
@@ -124,19 +128,6 @@ def render_deal_pdf(
     template = env.get_template("deal_memo_template.html")
     html_out = template.render(**context)
 
-    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as tmp_html:
-        tmp_html.write(html_out)
-        tmp_html_path = tmp_html.name
-
-    subprocess.run([
-        "wkhtmltopdf",
-        "--enable-local-file-access",
-        "--margin-top", "0",
-        "--margin-bottom", "0",
-        "--margin-left", "0",
-        "--margin-right", "0",
-        tmp_html_path,
-        output_path,
-    ], check=True)
+    HTML(string=html_out, base_url=str(TEMPLATE_DIR)).write_pdf(output_path)
 
     return output_path
