@@ -2,6 +2,8 @@ import streamlit as st
 import json
 import base64
 from datetime import datetime
+from financial_extractor import extract_financials, to_fact_sheet_defaults
+import tempfile
 from anthropic import Anthropic
 from utils import require_team_login, send_memo_email
 
@@ -427,7 +429,6 @@ if _fe:
         st.rerun()
 
 st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
-st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # FORM
@@ -560,23 +561,23 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     _mgt_label = f"Mgt Accs ({mgt_months})"
     c3.markdown(f"<div style='padding-top:0.55rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
 
-    revenue_2024    = c1.number_input("Revenue P1",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    revenue_2025    = c2.number_input("Revenue P2",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    revenue_2024 = c1.number_input("Revenue P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("revenue_p1", 0.0))
+    revenue_2025    = c2.number_input("Revenue P2",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("revenue_p2", 0.0))
     revenue_mgt     = c3.number_input("Revenue MgtAccs",min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Revenue / Turnover")
 
-    gp_2024         = c1.number_input("GP P1",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    gp_2025         = c2.number_input("GP P2",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    gp_2024         = c1.number_input("GP P1",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("gp_p1", 0.0))
+    gp_2025         = c2.number_input("GP P2",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("gp_p2", 0.0))
     gp_mgt          = c3.number_input("GP Mgt",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Gross Profit")
 
-    ebitda_2024     = c1.number_input("EBITDA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    ebitda_2025     = c2.number_input("EBITDA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    ebitda_2024     = c1.number_input("EBITDA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ebitda_p1", 0.0))
+    ebitda_2025     = c2.number_input("EBITDA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ebitda_p2", 0.0))
     ebitda_mgt      = c3.number_input("EBITDA Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("EBITDA")
 
-    np_2024         = c1.number_input("NP P1", step=1000.0, format="%.0f", label_visibility="collapsed")
-    np_2025         = c2.number_input("NP P2", step=1000.0, format="%.0f", label_visibility="collapsed")
+    np_2024         = c1.number_input("NP P1", step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("np_p1", 0.0))
+    np_2025         = c2.number_input("NP P2", step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("np_p2", 0.0))
     np_mgt          = c3.number_input("NP Mgt",  step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Net Profit")
 
@@ -597,23 +598,23 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     c2.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{fy_period_2}</div>", unsafe_allow_html=True)
     c3.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
 
-    curr_assets_2024  = c1.number_input("CA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    curr_assets_2025  = c2.number_input("CA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    curr_assets_2024  = c1.number_input("CA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ca_p1", 0.0))
+    curr_assets_2025  = c2.number_input("CA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ca_p2", 0.0))
     curr_assets_mgt   = c3.number_input("CA Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Current Assets")
 
-    curr_liab_2024    = c1.number_input("CL P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    curr_liab_2025    = c2.number_input("CL P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    curr_liab_2024    = c1.number_input("CL P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("cl_p1", 0.0))
+    curr_liab_2025    = c2.number_input("CL P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed". value=_fe.get("cl_p2", 0.0))
     curr_liab_mgt     = c3.number_input("CL Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Current Liabilities")
 
-    total_debt_2024   = c1.number_input("TD P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    total_debt_2025   = c2.number_input("TD P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    total_debt_2024   = c1.number_input("TD P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("debt_p1", 0.0))
+    total_debt_2025   = c2.number_input("TD P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("debt_p2", 0.0))
     total_debt_mgt    = c3.number_input("TD Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Total Debt / Liabilities")
 
-    equity_2024       = c1.number_input("EQ P1", step=1000.0, format="%.0f", label_visibility="collapsed")
-    equity_2025       = c2.number_input("EQ P2", step=1000.0, format="%.0f", label_visibility="collapsed")
+    equity_2024       = c1.number_input("EQ P1", step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("equity_p1", 0.0))
+    equity_2025       = c2.number_input("EQ P2", step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("equity_p2", 0.0))
     equity_mgt        = c3.number_input("EQ Mgt",  step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Total Equity")
 
