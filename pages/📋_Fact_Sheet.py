@@ -4,6 +4,7 @@ import base64
 from datetime import datetime
 from financial_extractor import extract_financials, to_fact_sheet_defaults
 import tempfile
+from pdf_memo_renderer import render_deal_pdf
 from anthropic import Anthropic
 from utils import require_team_login, send_memo_email
 
