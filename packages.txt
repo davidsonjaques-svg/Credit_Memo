@@ -1,3 +1,5 @@
 poppler-utils
-wkhtmltopdf
-weasyprint
+libpango-1.0-0
+libpangocairo-1.0-0
+libpangoft2-1.0-0
+libcairo2
