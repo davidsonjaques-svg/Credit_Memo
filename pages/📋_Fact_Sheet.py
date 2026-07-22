@@ -981,7 +981,7 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
         # ── Download buttons — multiple formats ───────────────────────────────
         if not _is_client:
             st.markdown("**Download Assessment:**")
-            dl1, dl2, dl3 = st.columns(4)
+            dl1, dl2, dl3, dl4 = st.columns(4)
 
         dl1.download_button(
             label="⬇  Download as .txt",
@@ -1033,6 +1033,16 @@ tr:nth-child(even) td{{background:#f8f9fb}}
             use_container_width=True,
             help="Opens in browser — print to PDF via File > Print > Save as PDF"
         )
+        
+        if pdf_bytes:
+            dl4.download_button(
+                label="⬇  Download Branded PDF",
+                data=pdf_bytes,
+                file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                help="Navy/gold branded PDF with charts — ready to send to credit committee"
+            )
 
         st.caption("💡 Tip: The .html file gives the best view and can be printed to PDF from your browser (File → Print → Save as PDF)")
 
