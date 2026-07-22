@@ -51,6 +51,39 @@ def _fig_to_base64(fig) -> str:
     return base64.b64encode(buf.read()).decode("utf-8")
 
 
+def risk_flag_summary_chart(flags: list[tuple[str, str]]) -> str:
+    """
+    Bar chart summarising auto-detected risk flags by severity, matching
+    the CRITICAL/HIGH/MEDIUM system actually used in _Fact_Sheet.py
+    (no fabricated numeric score - this reflects the real flag logic).
+    flags: list of (severity, message) tuples, e.g. [("HIGH", "..."), ...]
+    """
+    order = ["CRITICAL", "HIGH", "MEDIUM"]
+    colors_map = {"CRITICAL": RED, "HIGH": "#D97706", "MEDIUM": GOLD}
+    counts = {level: 0 for level in order}
+    for sev, _ in flags:
+        if sev in counts:
+            counts[sev] += 1
+
+    fig, ax = plt.subplots(figsize=(5.5, 2.6))
+    bars = ax.bar(order, [counts[l] for l in order],
+                   color=[colors_map[l] for l in order], width=0.5)
+    for b, level in zip(bars, order):
+        h = b.get_height()
+        ax.text(b.get_x() + b.get_width() / 2, h + 0.05, str(counts[level]),
+                ha="center", fontsize=11, fontweight="bold", color=NAVY)
+
+    ax.set_ylim(0, max(counts.values(), default=0) + 1.5)
+    ax.set_yticks(range(0, max(counts.values(), default=0) + 2))
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    total = sum(counts.values())
+    title = f"{total} Risk Flag{'s' if total != 1 else ''} Auto-Detected" if total else "No Risk Flags Auto-Detected"
+    ax.set_title(title, fontsize=11, fontweight="bold", color=NAVY, pad=10)
+    fig.tight_layout()
+    return _fig_to_base64(fig)
+
+
 def revenue_ebitda_chart(periods: list[str], revenue: list[float], ebitda: list[float]) -> str:
     """Bar + line combo: Revenue as bars, EBITDA margin as a line on secondary axis."""
     periods_r = list(reversed(periods))
