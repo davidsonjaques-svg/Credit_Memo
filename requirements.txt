@@ -5,3 +5,4 @@ pdf2image
 markdown
 jinja2
 weasyprint
+matplotlib
