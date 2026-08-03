@@ -908,6 +908,129 @@ if submitted:
         "analyst_preliminary_view": analyst_recommendation,
     }
 
+    # ── Store payload & draft the Evaluation Criteria matrix ───────────────────
+    st.session_state.deal_payload = payload
+    st.session_state.deal_prompt_meta = {
+        "fy_period_1": fy_period_1, "fy_period_2": fy_period_2,
+        "mgt_label": _mgt_label, "mgt_months": mgt_months, "mgt_as_at": mgt_as_at,
+        "business_name": business_name,
+    }
+
+    try:
+        api_key = st.secrets["ANTHROPIC_API_KEY"]
+    except Exception:
+        import os
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+
+    if not api_key:
+        st.error("⚠️ ANTHROPIC_API_KEY not found in Streamlit secrets.")
+        st.stop()
+
+    with st.spinner("🤖 Drafting evaluation criteria — assessing industry, entrepreneur, viability and risk…"):
+        try:
+            client = Anthropic(api_key=api_key)
+
+            eval_prompt = f"""You are a senior South African credit analyst at Inland Fund. Based on the deal data below, draft an Evaluation Criteria assessment.
+
+DEAL DATA:
+{json.dumps(payload, indent=2, default=str)}
+
+For EACH of the following nine criteria, write a substantive "Details" narrative (1–2 paragraphs) and assign a risk rating of exactly "Low", "Average", or "High".
+
+Draw on real, accurate knowledge of the relevant South African market and industry context. For example, if the industry is student accommodation, discuss the actual dynamics of the SA student housing sector — NSFAS funding cycles, university enrolment demand, location dependency, vacancy risk, typical yields — and evaluate the perceived risk accordingly. Be specific and accurate, not generic. Where the data is thin, say what further information would be needed and rate conservatively.
+
+The nine criteria:
+1. "The industry" — the sector the business operates in, its structure, growth, cyclicality, and SA-specific risks.
+2. "Evaluation of the entrepreneur including commitment" — experience, track record, and skin in the game.
+3. "Financial risk vs business risk vs returns" — the balance of these three and whether returns justify the risk.
+4. "Financial viability" — profitability, cash flow, and ability to service the facility.
+5. "Technical viability" — whether the business model and operations are sound and deliverable.
+6. "Market penetration and turnover achievability" — realism of revenue/turnover assumptions given the market.
+7. "Deal structure and pricing" — soundness of the funding structure, gearing, and pricing.
+8. "Application vs profile of the entrepreneur and business" — fit between what's requested and who is requesting it.
+9. "Risk factors" — the overarching risks that could impair repayment.
+
+Return ONLY a strict JSON array, no markdown, no code fences, no preamble:
+[
+  {{"criterion": "The industry", "details": "...", "rating": "Low|Average|High"}},
+  ... (all nine, in order)
+]"""
+
+            resp = client.messages.create(
+                model="claude-sonnet-4-5",
+                max_tokens=3500,
+                messages=[{"role": "user", "content": eval_prompt}],
+            )
+            raw = "".join(b.text for b in resp.content if hasattr(b, "text"))
+            raw = raw.replace("```json", "").replace("```", "").strip()
+            eval_rows = json.loads(raw)
+            st.session_state.eval_matrix = pd.DataFrame(eval_rows)
+            st.session_state.eval_stage = "review"
+        except Exception as e:
+            st.warning(f"Could not auto-draft evaluation criteria ({e}). You can still generate the report — a blank matrix will be used.")
+            st.session_state.eval_matrix = pd.DataFrame(
+                [{"criterion": c, "details": "", "rating": "Average"} for c in [
+                    "The industry", "Evaluation of the entrepreneur including commitment",
+                    "Financial risk vs business risk vs returns", "Financial viability",
+                    "Technical viability", "Market penetration and turnover achievability",
+                    "Deal structure and pricing", "Application vs profile of the entrepreneur and business",
+                    "Risk factors"]])
+            st.session_state.eval_stage = "review"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 2 — REVIEW EVALUATION MATRIX, THEN GENERATE FINAL REPORT
+# ═══════════════════════════════════════════════════════════════════════════════
+if st.session_state.get("eval_stage") == "review" and not _is_client:
+    payload = st.session_state.deal_payload
+    meta = st.session_state.deal_prompt_meta
+    business_name = meta["business_name"]
+
+    st.markdown("---")
+    st.markdown('<div class="section-label">📝 Evaluation Criteria — Review & Edit Before Generating</div>', unsafe_allow_html=True)
+    st.markdown('<div class="helper-tip">✅ The AI has drafted an assessment for each criterion below, drawing on real industry and market context. Review the narratives and ratings, edit anything you disagree with, then generate the final report — your edits are woven into the relevant sections.</div>', unsafe_allow_html=True)
+
+    edited_eval = st.data_editor(
+        st.session_state.eval_matrix,
+        use_container_width=True,
+        num_rows="dynamic",
+        key="eval_editor",
+        column_config={
+            "criterion": st.column_config.TextColumn("Criteria", width="medium"),
+            "details":   st.column_config.TextColumn("Details (AI-drafted — editable)", width="large"),
+            "rating":    st.column_config.SelectboxColumn("Risk Rating", options=["Low", "Average", "High"], width="small"),
+        },
+    )
+    st.session_state.eval_matrix = edited_eval
+
+    gen_final = st.button("✅  Generate Final Assessment", use_container_width=True, key="gen_final_btn")
+
+    if gen_final:
+        st.session_state.eval_stage = "generate"
+        st.session_state.eval_final = edited_eval.to_dict(orient="records")
+        st.rerun()
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 3 — GENERATE THE FULL REPORT (weaving in the evaluation criteria)
+# ═══════════════════════════════════════════════════════════════════════════════
+_run_generation = st.session_state.get("eval_stage") == "generate"
+# Clients skip the review step — generate straight through
+if _is_client and st.session_state.get("eval_stage") == "review":
+    st.session_state.eval_stage = "generate"
+    st.session_state.eval_final = st.session_state.eval_matrix.to_dict(orient="records")
+    _run_generation = True
+
+if _run_generation:
+    payload = st.session_state.deal_payload
+    meta = st.session_state.deal_prompt_meta
+    business_name = meta["business_name"]
+    fy_period_1, fy_period_2 = meta["fy_period_1"], meta["fy_period_2"]
+    _mgt_label, mgt_months, mgt_as_at = meta["mgt_label"], meta["mgt_months"], meta["mgt_as_at"]
+    evaluation_criteria = st.session_state.get("eval_final", [])
+
+    # Inject evaluation criteria into the payload for the report
+    payload = dict(payload)
+    payload["evaluation_criteria"] = evaluation_criteria
+
     # ── Claude generation ──────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown('<div class="section-label">📄 Generating Deal Fact Sheet Assessment…</div>', unsafe_allow_html=True)
@@ -924,6 +1047,7 @@ RULES:
 - Calculate and present ratios in tables with benchmark comparisons.
 - Identify trends across the two selected financial years and the latest management accounts (note the management accounts may cover only part of a year — treat them accordingly).
 - Flag anomalies, inconsistencies, and items requiring further due diligence.
+- You are given a set of analyst-reviewed EVALUATION CRITERIA (industry, entrepreneur, viability, etc.) each with a narrative and a Low/Average/High rating. Weave each one into the most relevant section — e.g. the industry narrative into Business Overview, the entrepreneur evaluation into Entrepreneur Profiles, financial viability into Financial Analysis, deal structure into the funding section, and so on. Preserve the analyst's rating for each. Also include a consolidated Evaluation Criteria summary table near the end.
 - Use Markdown formatting: ## for sections, ### for sub-sections, bold for key figures, tables where applicable."""
 
     user_prompt = f"""Generate a complete Deal Fact Sheet Assessment for Inland Fund based on the following data. Cover every section.
@@ -939,10 +1063,10 @@ Date: {payload['deal_date']} | Prepared by: Inland Fund Investment Team | Status
 ---
 
 ## 1. BUSINESS OVERVIEW
-Summarise the business: entity type, establishment date, years trading, BEE status, compliance, what makes it unique. Describe the shareholder and group structure clearly.
+Summarise the business: entity type, establishment date, years trading, BEE status, compliance, what makes it unique. Describe the shareholder and group structure clearly. WEAVE IN the "The industry" evaluation criterion here — provide the 1–2 paragraph industry context and its Low/Average/High rating.
 
 ## 2. ENTREPRENEUR PROFILES
-Present each entrepreneur in a table (Name | Role | Qualifications | Experience). Assess key-person risk and succession planning quality.
+Present each entrepreneur in a table (Name | Role | Qualifications | Experience). Assess key-person risk and succession planning quality. WEAVE IN the "Evaluation of the entrepreneur including commitment" and "Application vs profile of the entrepreneur and business" criteria here, with their ratings.
 
 ## 3. PURPOSE OF FUNDING & USE OF FUNDS
 State the funding background and rationale. Present the use of funds as a table:
@@ -959,9 +1083,10 @@ Then analyse the gearing and financial structure:
 - Assess whether the entrepreneur's Own Funds contribution is adequate (benchmark: 25%+ is reasonable, 40%+ is conservative/strong, below 10% is highly geared and higher risk).
 - Comment on how the addition of the new facility (Business Partners) reshapes the balance sheet and the overall gearing.
 - Flag any concern where the structure is debt-heavy or the owner has minimal skin in the game.
+- WEAVE IN the "Deal structure and pricing" criterion here, with its rating.
 
 ## 4. REVENUE MODEL ANALYSIS
-Describe each revenue stream, payment terms, and margin profile. Comment on revenue diversification and whether the model is sustainable. Note any seasonality risk.
+Describe each revenue stream, payment terms, and margin profile. Comment on revenue diversification and whether the model is sustainable. Note any seasonality risk. WEAVE IN the "Market penetration and turnover achievability" and "Technical viability" criteria here, with their ratings.
 
 ## 5. FINANCIAL ANALYSIS
 
@@ -970,9 +1095,9 @@ Present a 3-period comparative table using the ACTUAL period labels from the dat
 | Metric | {fy_period_1} | {fy_period_2} | {_mgt_label} | Trend |
 Include: Revenue, Gross Profit, GP Margin %, EBITDA, Net Profit, NP Margin %
 
-IMPORTANT: The management accounts cover {mgt_months} only (as at {mgt_as_at}), so do NOT compare them like-for-like against the full financial years. When commenting, annualise or contextualise the management-account figures appropriately (e.g. note that {mgt_months} of trading is tracking ahead of / behind the prior full year on a pro-rata basis).
+IMPORTANT: The management accounts cover {mgt_months} only (as at {mgt_as_at}), so do NOT compare them like-for-like against the full financial years. When commenting, annualise or contextualise the management-account figures appropriately.
 
-Trend analysis: highlight growth rates between {fy_period_1} and {fy_period_2}, margin compression/expansion, and any anomalies. Note items requiring further DD.
+Trend analysis: highlight growth rates between {fy_period_1} and {fy_period_2}, margin compression/expansion, and any anomalies. WEAVE IN the "Financial viability" and "Financial risk vs business risk vs returns" criteria here, with their ratings.
 
 ### 5.2 Balance Sheet & Ratio Analysis
 Present calculated ratios across all periods using the same labels:
@@ -982,30 +1107,37 @@ Include: Current Ratio (≥1.5), Debt/Equity (≤2.0x)
 Comment on balance sheet trends and flag anomalies.
 
 ## 6. BANK STATEMENT ANALYSIS
-Summarise findings: monthly credit average vs declared revenue, RDs noted (frequency, severity), overdraft usage, unusual transactions, cash flow consistency. Give an overall bank statement health rating.
+Summarise findings: monthly credit average vs declared revenue, RDs noted, overdraft usage, unusual transactions, cash flow consistency. Give an overall bank statement health rating.
 
 ## 7. GROUP STRUCTURE
 Describe related entities, cross-guarantees, and inter-company exposure. Assess the financial gearing of the group overall. Note if group statements are outstanding.
 
 ## 8. CREDIT & BACKGROUND CHECK FINDINGS
-Summarise entrepreneur and business credit results. Highlight any adverse findings and their materiality to this application.
+Summarise entrepreneur and business credit results. Highlight any adverse findings and their materiality.
 
-## 9. RISK MATRIX
+## 9. EVALUATION CRITERIA SUMMARY
+Present the full analyst-reviewed evaluation matrix as a consolidated table:
+| Criteria | Assessment Summary | Risk Rating |
+Use a concise one-line summary per criterion (the detail is already woven above) and the Low/Average/High rating. WEAVE IN the "Risk factors" criterion narrative just before or after this table.
+
+## 10. RISK MATRIX
 Present all identified risks (auto-flagged + your own analysis) in a structured table:
 | # | Risk Factor | Severity | Probability | Mitigant / Required Action |
 
-## 10. OUTSTANDING QUERIES & FURTHER DUE DILIGENCE REQUIRED
+## 11. OUTSTANDING QUERIES & FURTHER DUE DILIGENCE REQUIRED
 List every open item that must be resolved before credit committee sign-off. Format as a numbered checklist.
 
-## 11. ANALYST ASSESSMENT & RECOMMENDATION
+## 12. ANALYST ASSESSMENT & RECOMMENDATION
 State the analyst's preliminary view clearly. Provide a concise 4–6 sentence rationale covering: business quality, financial strength, deal structure, security, and key risks. If recommending approval, suggest deal terms (amount, tenor, rate basis, security required)."""
 
     # ── Load API key ──────────────────────────────────────────────────────────
     try:
         api_key = st.secrets["ANTHROPIC_API_KEY"]
     except Exception:
+        import os
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
         st.error("⚠️ ANTHROPIC_API_KEY not found in Streamlit secrets.")
-        st.info("Add it under App Settings → Secrets:\nANTHROPIC_API_KEY = \"sk-ant-...\"")
         st.stop()
 
     client = Anthropic(api_key=api_key)
@@ -1015,7 +1147,7 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
     try:
         with client.messages.stream(
             model="claude-sonnet-4-5",
-            max_tokens=4500,
+            max_tokens=6000,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         ) as stream:
@@ -1036,10 +1168,17 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
             output_placeholder.empty()
 
         # ── Email delivery ────────────────────────────────────────────────────
-        subject = f"[ScaleForce] Deal Assessment — {business_name} — {datetime.today().strftime('%d %b %Y')}"
+        subject = f"[Inland Fund] Deal Assessment — {business_name} — {datetime.today().strftime('%d %b %Y')}"
         email_sent = send_memo_email(subject, full_output, business_name, "Deal Fact Sheet Assessment")
         if email_sent:
             st.success("✅ Assessment emailed to the Inland Fund team inbox.")
+
+        # ── Allow starting over (clears the evaluation review stage) ───────────
+        if not _is_client:
+            if st.button("🔄  Start a New Assessment", key="reset_stage"):
+                for k in ("eval_stage", "eval_matrix", "eval_final", "deal_payload", "deal_prompt_meta"):
+                    st.session_state.pop(k, None)
+                st.rerun()
 
         # ── Download buttons — multiple formats ───────────────────────────────
         if not _is_client:
