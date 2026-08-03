@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    @page { margin: 0; }
+    * { box-sizing: border-box; }
+    body {
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        color: #1C2430;
+        margin: 0;
+        font-size: 11px;
+        line-height: 1.6;
+    }
+
+    /* ---------- Cover Page ---------- */
+    .cover {
+        height: 297mm;
+        background: linear-gradient(160deg, #0A1628 0%, #132039 60%, #1C3358 100%);
+        color: #FFFFFF;
+        padding: 30mm 20mm;
+        position: relative;
+        page-break-after: always;
+    }
+    .cover .goldbar { width: 60px; height: 5px; background: #C9A84C; margin-bottom: 24px; }
+    .cover .firm { font-size: 13px; letter-spacing: 3px; text-transform: uppercase; color: #C9A84C; margin-bottom: 8px; }
+    .cover h1 { font-size: 30px; font-weight: 300; margin: 0 0 6px 0; letter-spacing: 0.5px; }
+    .cover h2 { font-size: 16px; font-weight: 300; color: #B9C2D4; margin: 0 0 60px 0; }
+    .cover .meta-table { margin-top: 80px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 20px; width: 100%; }
+    .cover .meta-table td { padding: 6px 0; font-size: 11px; color: #D6DCE8; }
+    .cover .meta-table td.label { color: #8A94A6; text-transform: uppercase; letter-spacing: 1px; font-size: 9px; width: 40%; }
+    .cover .confidential {
+        position: absolute; bottom: 20mm; left: 20mm; right: 20mm;
+        font-size: 8.5px; color: #6B7690; border-top: 1px solid rgba(255,255,255,0.15); padding-top: 12px;
+    }
+    .cover .badge {
+        position: absolute; top: 30mm; right: 20mm;
+        border: 1px solid #C9A84C; color: #C9A84C; padding: 8px 16px;
+        font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+    }
+
+    /* ---------- Content Pages ---------- */
+    .page { padding: 14mm 18mm; }
+
+    .header-strip {
+        display: flex; justify-content: space-between; align-items: center;
+        border-bottom: 2px solid #0A1628; padding-bottom: 6px; margin-bottom: 16px;
+    }
+    .header-strip .brand { font-size: 10px; color: #0A1628; font-weight: 700; letter-spacing: 1px; }
+    .header-strip .brand span { color: #C9A84C; }
+    .header-strip .doc-title { font-size: 9px; color: #8A94A6; text-transform: uppercase; letter-spacing: 1px; }
+
+    h3.sub-title { font-size: 12px; color: #1C3358; margin: 18px 0 8px 0; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .chart-row { display: flex; gap: 14px; margin: 10px 0 18px 0; align-items: flex-start; }
+    .chart-box { flex: 1; text-align: center; }
+    .chart-box img { width: 100%; max-width: 100%; }
+    .chart-caption { font-size: 8.5px; color: #8A94A6; margin-top: 2px; }
+
+    .flag-row { display: flex; gap: 10px; margin: 14px 0; }
+    .flag-card {
+        flex: 1; border: 1px solid #E4CD8C; border-left: 4px solid #C9A84C;
+        padding: 10px 12px; background: #FDFBF5;
+    }
+    .flag-card .label { font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.6px; color: #8A94A6; }
+    .flag-card .value { font-size: 15px; font-weight: 700; color: #0A1628; margin-top: 2px; }
+
+    hr.divider { border: none; border-top: 1px solid #E4E7EC; margin: 20px 0; }
+
+    /* ---------- Rendered Markdown Body ---------- */
+    .memo-body h1 { color: #0A1628; font-size: 18px; border-bottom: 2px solid #C9A84C; padding-bottom: 8px; margin-top: 0; }
+    .memo-body h2 {
+        font-size: 13px; color: #0A1628; font-weight: 700; margin: 22px 0 8px 0;
+        padding-bottom: 5px; border-bottom: 1px solid #E4CD8C; text-transform: uppercase; letter-spacing: 0.4px;
+    }
+    .memo-body h3 { font-size: 11.5px; color: #1C3358; margin: 14px 0 6px 0; font-weight: 700; }
+    .memo-body p { margin: 6px 0; text-align: justify; }
+    .memo-body ul, .memo-body ol { margin: 6px 0; padding-left: 20px; }
+    .memo-body li { margin-bottom: 4px; }
+    .memo-body strong { color: #0A1628; }
+    .memo-body hr { border: none; border-top: 1px solid #E4E7EC; margin: 16px 0; }
+    .memo-body table { width: 100%; border-collapse: collapse; margin: 10px 0 16px 0; font-size: 10px; }
+    .memo-body th {
+        background: #0A1628; color: #FFFFFF; text-align: left; padding: 6px 8px;
+        font-weight: 600; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.4px;
+    }
+    .memo-body td { padding: 5px 8px; border-bottom: 1px solid #EDEFF3; }
+    .memo-body tr:nth-child(even) td { background: #F7F8FA; }
+
+    .footer-note {
+        margin-top: 30px; padding: 12px 16px; background: #F2F4F8; border-left: 4px solid #0A1628; font-size: 9.5px; color: #555;
+    }
+</style>
+</head>
+<body>
+
+<!-- ============ COVER PAGE ============ -->
+<div class="cover">
+    <div class="badge">{{ recommendation_badge }}</div>
+    <div class="goldbar"></div>
+    <div class="firm">Inland Fund</div>
+    <h1>Deal Fact Sheet & Assessment</h1>
+    <h2>{{ business_name }}</h2>
+
+    <table class="meta-table">
+        <tr><td class="label">Funding Requested</td><td>{{ total_funding_required }}</td></tr>
+        <tr><td class="label">Legal Entity</td><td>{{ legal_entity }}</td></tr>
+        <tr><td class="label">Prepared By</td><td>Inland Fund Investment Team</td></tr>
+        <tr><td class="label">Date</td><td>{{ deal_date }}</td></tr>
+    </table>
+
+    <div class="confidential">
+        This document is confidential and prepared solely for the internal use of Inland Fund and its designated
+        funding partners. AI-assisted output — requires analyst review. May not be reproduced or distributed
+        without written consent.
+    </div>
+</div>
+
+<!-- ============ CONTENT PAGE ============ -->
+<div class="page">
+    <div class="header-strip">
+        <div class="brand">INLAND <span>FUND</span></div>
+        <div class="doc-title">Deal Fact Sheet &mdash; {{ business_name }}</div>
+    </div>
+
+    <div class="flag-row">
+        <div class="flag-card">
+            <div class="label">Funding Requested</div>
+            <div class="value">{{ total_funding_required }}</div>
+        </div>
+        <div class="flag-card">
+            <div class="label">Analyst View</div>
+            <div class="value">{{ analyst_recommendation_short }}</div>
+        </div>
+        <div class="flag-card">
+            <div class="label">Latest Revenue</div>
+            <div class="value">{{ latest_revenue }}</div>
+        </div>
+        <div class="flag-card">
+            <div class="label">Risk Flags</div>
+            <div class="value">{{ flag_count }}</div>
+        </div>
+    </div>
+
+    <h3 class="sub-title">Financial Trend</h3>
+    <div class="chart-row">
+        <div class="chart-box">
+            <img src="data:image/png;base64,{{ chart_revenue }}">
+            <div class="chart-caption">Revenue & EBITDA margin, {{ fy_period_1 }} vs {{ fy_period_2 }}</div>
+        </div>
+        <div class="chart-box">
+            <img src="data:image/png;base64,{{ chart_liquidity }}">
+            <div class="chart-caption">Current ratio & debt/equity, {{ fy_period_1 }} vs {{ fy_period_2 }}</div>
+        </div>
+    </div>
+
+    <h3 class="sub-title">Risk Flag Summary</h3>
+    <div class="chart-row">
+        <div class="chart-box" style="flex: 0 0 55%;">
+            <img src="data:image/png;base64,{{ chart_risk_flags }}">
+            <div class="chart-caption">Auto-detected flags by severity (see full detail in assessment below)</div>
+        </div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="memo-body">
+        {{ memo_html | safe }}
+    </div>
+
+    <div class="footer-note">
+        Prepared by Inland Fund on {{ deal_date }}. This memo is AI-assisted and based on information provided by
+        the applicant and the automated financial extraction pipeline. Subject to Inland Fund's standard terms of
+        engagement and further credit committee review.
+    </div>
+</div>
+
+</body>
+</html>

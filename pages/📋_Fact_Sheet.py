@@ -2,6 +2,9 @@ import streamlit as st
 import json
 import base64
 from datetime import datetime
+from financial_extractor import extract_financials, to_fact_sheet_defaults
+import tempfile
+from pdf_memo_renderer import render_deal_pdf
 from anthropic import Anthropic
 from utils import require_team_login, send_memo_email
 
@@ -349,6 +352,82 @@ if st.session_state.bank_analysis:
     if st.button("🗑  Clear Analysis", key="clear_bank"):
         st.session_state.bank_analysis = None
         st.rerun()
+# ═══════════════════════════════════════════════════════════════════════════════
+# FINANCIAL STATEMENT ANALYZER (runs BEFORE the form — mirrors Bank Statement block)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+if "financial_extraction" not in st.session_state:
+    st.session_state.financial_extraction = None
+
+st.markdown('<div class="section-label">🤖 Automated Financial Statement Extraction (Optional)</div>', unsafe_allow_html=True)
+st.markdown('<div class="helper-tip">💡 Upload the Annual Financial Statements or Management Accounts PDF. The AI will extract key figures and pre-fill Section 05 below. Review and edit before submitting.</div>', unsafe_allow_html=True)
+
+fin_col1, fin_col2 = st.columns([2, 1])
+with fin_col1:
+    uploaded_financials = st.file_uploader(
+        "Upload Financial Statements PDF",
+        type=["pdf"],
+        help="Text-based or scanned PDFs both work. AFS, management accounts, or audit reports.",
+        key="financials_uploader"
+    )
+with fin_col2:
+    st.markdown("<div style='height:1.8rem'></div>", unsafe_allow_html=True)
+    extract_fin_clicked = st.button("🔍  Extract Financials", use_container_width=True, key="extract_fin_btn")
+
+if extract_fin_clicked:
+    if not uploaded_financials:
+        st.warning("Please upload a financials PDF first.")
+    else:
+        try:
+            api_key = st.secrets["ANTHROPIC_API_KEY"]
+        except Exception:
+            import os
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+
+        if not api_key:
+            st.error("⚠️ ANTHROPIC_API_KEY not configured — cannot run extraction.")
+        else:
+            with st.spinner("🤖 Extracting financial data… this may take 30–60 seconds."):
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                    tmp.write(uploaded_financials.getvalue())
+                    tmp_path = tmp.name
+
+                try:
+                    result = extract_financials(tmp_path, api_key=api_key)
+                    if result.success:
+                        st.session_state.financial_extraction = to_fact_sheet_defaults(result)
+                        st.success("✅ Financials extracted — Section 05 below has been pre-filled. Review and edit as needed.")
+                    else:
+                        st.error(f"Extraction failed: {result.warning or 'unknown error'}")
+                except Exception as e:
+                    st.error(f"Extraction failed: {e}")
+                    st.info("You can still fill Section 05 manually below.")
+
+# Show current extraction summary if present (same visual pattern as bank analysis card)
+_fe = st.session_state.get("financial_extraction") or {}
+if _fe:
+    st.markdown(f"""
+    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-left:3px solid #1d4ed8;
+                border-radius:0 4px 4px 0; padding:1rem 1.25rem; margin:0.5rem 0 1.5rem;">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:0.62rem; letter-spacing:0.15em;
+                    color:#1d4ed8; text-transform:uppercase; margin-bottom:0.5rem;">
+            🤖 AI Extraction Result — {_fe.get('company_name','')}
+        </div>
+        <div style="color:#1a1a1a; font-size:0.85rem; line-height:1.6;">
+            <strong>Periods found:</strong> {', '.join(_fe.get('periods', [])) or '—'} &nbsp;|&nbsp;
+            <strong>Most recent revenue:</strong> R {_fe.get('revenue_p2', 0):,.0f}
+        </div>
+        <div style="color:#555; font-size:0.78rem; margin-top:0.5rem; font-style:italic;">
+            {_fe.get('extraction_notes','')}
+        </div>
+        <div style="color:#b45309; font-size:0.75rem; margin-top:0.5rem;">
+            ⚠️ Confirm the FY dropdowns below (Period 1 / Period 2) actually match these extracted periods before submitting.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("🗑  Clear Extraction", key="clear_financials"):
+        st.session_state.financial_extraction = None
+        st.rerun()
 
 st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
 
@@ -483,23 +562,23 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     _mgt_label = f"Mgt Accs ({mgt_months})"
     c3.markdown(f"<div style='padding-top:0.55rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
 
-    revenue_2024    = c1.number_input("Revenue P1",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    revenue_2025    = c2.number_input("Revenue P2",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    revenue_2024 = c1.number_input("Revenue P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("revenue_p1", 0.0))
+    revenue_2025    = c2.number_input("Revenue P2",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("revenue_p2", 0.0))
     revenue_mgt     = c3.number_input("Revenue MgtAccs",min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Revenue / Turnover")
 
-    gp_2024         = c1.number_input("GP P1",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    gp_2025         = c2.number_input("GP P2",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    gp_2024         = c1.number_input("GP P1",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("gp_p1", 0.0))
+    gp_2025         = c2.number_input("GP P2",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("gp_p2", 0.0))
     gp_mgt          = c3.number_input("GP Mgt",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Gross Profit")
 
-    ebitda_2024     = c1.number_input("EBITDA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    ebitda_2025     = c2.number_input("EBITDA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    ebitda_2024     = c1.number_input("EBITDA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ebitda_p1", 0.0))
+    ebitda_2025     = c2.number_input("EBITDA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ebitda_p2", 0.0))
     ebitda_mgt      = c3.number_input("EBITDA Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("EBITDA")
 
-    np_2024         = c1.number_input("NP P1", step=1000.0, format="%.0f", label_visibility="collapsed")
-    np_2025         = c2.number_input("NP P2", step=1000.0, format="%.0f", label_visibility="collapsed")
+    np_2024         = c1.number_input("NP P1", step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("np_p1", 0.0))
+    np_2025         = c2.number_input("NP P2", step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("np_p2", 0.0))
     np_mgt          = c3.number_input("NP Mgt",  step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Net Profit")
 
@@ -520,23 +599,23 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     c2.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{fy_period_2}</div>", unsafe_allow_html=True)
     c3.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
 
-    curr_assets_2024  = c1.number_input("CA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    curr_assets_2025  = c2.number_input("CA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    curr_assets_2024  = c1.number_input("CA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ca_p1", 0.0))
+    curr_assets_2025  = c2.number_input("CA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ca_p2", 0.0))
     curr_assets_mgt   = c3.number_input("CA Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Current Assets")
 
-    curr_liab_2024    = c1.number_input("CL P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    curr_liab_2025    = c2.number_input("CL P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    curr_liab_2024    = c1.number_input("CL P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("cl_p1", 0.0))
+    curr_liab_2025    = c2.number_input("CL P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("cl_p2", 0.0))
     curr_liab_mgt     = c3.number_input("CL Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Current Liabilities")
 
-    total_debt_2024   = c1.number_input("TD P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    total_debt_2025   = c2.number_input("TD P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    total_debt_2024   = c1.number_input("TD P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("debt_p1", 0.0))
+    total_debt_2025   = c2.number_input("TD P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("debt_p2", 0.0))
     total_debt_mgt    = c3.number_input("TD Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Total Debt / Liabilities")
 
-    equity_2024       = c1.number_input("EQ P1", step=1000.0, format="%.0f", label_visibility="collapsed")
-    equity_2025       = c2.number_input("EQ P2", step=1000.0, format="%.0f", label_visibility="collapsed")
+    equity_2024       = c1.number_input("EQ P1", step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("equity_p1", 0.0))
+    equity_2025       = c2.number_input("EQ P2", step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("equity_p2", 0.0))
     equity_mgt        = c3.number_input("EQ Mgt",  step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Total Equity")
 
@@ -867,7 +946,32 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
         # ── For clients: clear the output display (they should not see the memo)
         if _is_client:
             output_placeholder.empty()
-
+            
+        # ── Branded PDF generation ──────────────────────────────────────────────
+        pdf_bytes = None
+        if not _is_client:
+            try:
+                with st.spinner("🎨 Rendering branded PDF..."):
+                    pdf_path = f"/tmp/memo_{business_name.replace(' ', '_')}.pdf"
+                    render_deal_pdf(
+                        payload=payload,
+                        full_output_markdown=full_output,
+                        flags=flags,
+                        fy_period_1=fy_period_1,
+                        fy_period_2=fy_period_2,
+                        revenue_2024=revenue_2024, revenue_2025=revenue_2025,
+                        ebitda_2024=ebitda_2024, ebitda_2025=ebitda_2025,
+                        curr_assets_2024=curr_assets_2024, curr_assets_2025=curr_assets_2025,
+                        curr_liab_2024=curr_liab_2024, curr_liab_2025=curr_liab_2025,
+                        total_debt_2024=total_debt_2024, total_debt_2025=total_debt_2025,
+                        equity_2024=equity_2024, equity_2025=equity_2025,
+                        output_path=pdf_path,
+                    )
+                    with open(pdf_path, "rb") as f:
+                        pdf_bytes = f.read()
+            except Exception as e:
+                st.warning(f"⚠️ Branded PDF generation failed: {e} — other download formats still available below.")   
+            
         # ── Email delivery ────────────────────────────────────────────────────
         subject = f"[ScaleForce] Deal Assessment — {business_name} — {datetime.today().strftime('%d %b %Y')}"
         email_sent = send_memo_email(subject, full_output, business_name, "Deal Fact Sheet Assessment")
@@ -877,7 +981,7 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
         # ── Download buttons — multiple formats ───────────────────────────────
         if not _is_client:
             st.markdown("**Download Assessment:**")
-            dl1, dl2, dl3 = st.columns(3)
+            dl1, dl2, dl3, dl4 = st.columns(4)
 
         dl1.download_button(
             label="⬇  Download as .txt",
@@ -929,6 +1033,16 @@ tr:nth-child(even) td{{background:#f8f9fb}}
             use_container_width=True,
             help="Opens in browser — print to PDF via File > Print > Save as PDF"
         )
+        
+        if pdf_bytes:
+            dl4.download_button(
+                label="⬇  Download Branded PDF",
+                data=pdf_bytes,
+                file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                help="Navy/gold branded PDF with charts — ready to send to credit committee"
+            )
 
         st.caption("💡 Tip: The .html file gives the best view and can be printed to PDF from your browser (File → Print → Save as PDF)")
 

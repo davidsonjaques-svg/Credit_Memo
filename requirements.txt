@@ -1,2 +1,11 @@
 streamlit>=1.35.0
 anthropic>=0.25.0
+pdfplumber
+pdf2image
+markdown
+jinja2
+weasyprint
+matplotlib
+pandas>=2.0.0
+gspread>=6.0.0
+google-auth>=2.0.0
