@@ -401,9 +401,9 @@ saf_edited = st.data_editor(
     column_config={
         "Description": st.column_config.TextColumn("Description", width="large",
             help="Line item — rename, delete, or add your own (e.g. Legal Fees, Raising Fees)"),
-        "Business Partners": st.column_config.NumberColumn("Business Partners (R)", format="%.0f", min_value=0),
-        "Outside Finance":   st.column_config.NumberColumn("Outside Finance (R)",   format="%.0f", min_value=0),
-        "Own Funds":         st.column_config.NumberColumn("Own Funds (R)",         format="%.0f", min_value=0),
+        "Business Partners": st.column_config.NumberColumn("Business Partners (R)", format="%.0f"),
+        "Outside Finance":   st.column_config.NumberColumn("Outside Finance (R)",   format="%.0f"),
+        "Own Funds":         st.column_config.NumberColumn("Own Funds (R)",         format="%.0f"),
     },
 )
 
