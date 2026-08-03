@@ -1,10 +1,8 @@
 import streamlit as st
 import json
 import base64
+import pandas as pd
 from datetime import datetime
-from financial_extractor import extract_financials, to_fact_sheet_defaults
-import tempfile
-from pdf_memo_renderer import render_deal_pdf
 from anthropic import Anthropic
 from utils import require_team_login, send_memo_email
 
@@ -352,82 +350,160 @@ if st.session_state.bank_analysis:
     if st.button("🗑  Clear Analysis", key="clear_bank"):
         st.session_state.bank_analysis = None
         st.rerun()
+
+st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
+
 # ═══════════════════════════════════════════════════════════════════════════════
-# FINANCIAL STATEMENT ANALYZER (runs BEFORE the form — mirrors Bank Statement block)
+# SOURCES & APPLICATION OF FUNDS (interactive — lives outside the form)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-if "financial_extraction" not in st.session_state:
-    st.session_state.financial_extraction = None
+st.markdown('<div class="section-label">💰 Sources & Application of Funds (Gearing Analysis)</div>', unsafe_allow_html=True)
+st.markdown('<div class="helper-tip">💡 Split each line item across the three funding sources. Rows auto-total, and the funding mix at the bottom reveals the gearing. Add your own rows (e.g. Legal Fees, Raising Fees) directly in the table — the last blank row lets you add more.</div>', unsafe_allow_html=True)
 
-st.markdown('<div class="section-label">🤖 Automated Financial Statement Extraction (Optional)</div>', unsafe_allow_html=True)
-st.markdown('<div class="helper-tip">💡 Upload the Annual Financial Statements or Management Accounts PDF. The AI will extract key figures and pre-fill Section 05 below. Review and edit before submitting.</div>', unsafe_allow_html=True)
+st.markdown("""
+<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+  <div style="flex:1;min-width:180px;background:#eff6ff;border-left:3px solid #1d4ed8;border-radius:0 4px 4px 0;padding:0.6rem 0.9rem;">
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;color:#1d4ed8;text-transform:uppercase;font-weight:600;">Business Partners</div>
+    <div style="color:#555;font-size:0.78rem;margin-top:0.2rem;">The lender advancing funds (Inland Fund)</div>
+  </div>
+  <div style="flex:1;min-width:180px;background:#fff7ed;border-left:3px solid #e8610a;border-radius:0 4px 4px 0;padding:0.6rem 0.9rem;">
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;color:#e8610a;text-transform:uppercase;font-weight:600;">Outside Finance</div>
+    <div style="color:#555;font-size:0.78rem;margin-top:0.2rem;">Existing liabilities on the balance sheet — bank loans, mortgages, vehicle & trade finance</div>
+  </div>
+  <div style="flex:1;min-width:180px;background:#f0fdf4;border-left:3px solid #16a34a;border-radius:0 4px 4px 0;padding:0.6rem 0.9rem;">
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;color:#16a34a;text-transform:uppercase;font-weight:600;">Own Funds</div>
+    <div style="color:#555;font-size:0.78rem;margin-top:0.2rem;">Entrepreneur equity / contribution — retained earnings, debtors, cash introduced</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
-fin_col1, fin_col2 = st.columns([2, 1])
-with fin_col1:
-    uploaded_financials = st.file_uploader(
-        "Upload Financial Statements PDF",
-        type=["pdf"],
-        help="Text-based or scanned PDFs both work. AFS, management accounts, or audit reports.",
-        key="financials_uploader"
-    )
-with fin_col2:
-    st.markdown("<div style='height:1.8rem'></div>", unsafe_allow_html=True)
-    extract_fin_clicked = st.button("🔍  Extract Financials", use_container_width=True, key="extract_fin_btn")
+# Default line items (editable, not hardcoded — user can rename, delete, or add)
+_default_saf = pd.DataFrame([
+    {"Description": "Land and buildings", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
+    {"Description": "Furniture and fittings", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
+    {"Description": "Debtors", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
+    {"Description": "Investments", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
+    {"Description": "Bank", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
+    {"Description": "Deposits", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
+    {"Description": "Vehicles", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
+    {"Description": "Legal Fees", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
+    {"Description": "Raising Fees", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
+])
 
-if extract_fin_clicked:
-    if not uploaded_financials:
-        st.warning("Please upload a financials PDF first.")
+if "saf_table" not in st.session_state:
+    st.session_state.saf_table = _default_saf
+
+saf_edited = st.data_editor(
+    st.session_state.saf_table,
+    num_rows="dynamic",
+    use_container_width=True,
+    key="saf_editor",
+    column_config={
+        "Description": st.column_config.TextColumn("Description", width="large",
+            help="Line item — rename, delete, or add your own (e.g. Legal Fees, Raising Fees)"),
+        "Business Partners": st.column_config.NumberColumn("Business Partners (R)", format="%.0f", min_value=0),
+        "Outside Finance":   st.column_config.NumberColumn("Outside Finance (R)",   format="%.0f", min_value=0),
+        "Own Funds":         st.column_config.NumberColumn("Own Funds (R)",         format="%.0f", min_value=0),
+    },
+)
+
+# ── Compute totals & gearing ──────────────────────────────────────────────────
+saf_clean = saf_edited.fillna(0)
+col_bp   = float(saf_clean["Business Partners"].sum())
+col_of   = float(saf_clean["Outside Finance"].sum())
+col_own  = float(saf_clean["Own Funds"].sum())
+grand    = col_bp + col_of + col_own
+
+def _pct(v): return (v / grand * 100) if grand else 0.0
+
+# Row totals for display
+saf_display = saf_clean.copy()
+saf_display["Total"] = saf_display[["Business Partners","Outside Finance","Own Funds"]].sum(axis=1)
+
+# ── Totals & funding-mix panel ────────────────────────────────────────────────
+def _fmt(v): return f"R {v:,.0f}"
+
+st.markdown(f"""
+<div style="background:#0a1628;border:1px solid #1e3050;border-top:2px solid #c9a84c;border-radius:4px;padding:1.1rem 1.5rem;margin-top:0.75rem;">
+  <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center;">
+    <div style="flex:1;min-width:140px;">
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;letter-spacing:0.12em;color:#1d4ed8;text-transform:uppercase;">Business Partners</div>
+      <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:#f5f0e8;font-weight:700;">{_fmt(col_bp)}</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#8a9ab5;">{_pct(col_bp):.1f}% of total</div>
+    </div>
+    <div style="flex:1;min-width:140px;">
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;letter-spacing:0.12em;color:#e8610a;text-transform:uppercase;">Outside Finance</div>
+      <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:#f5f0e8;font-weight:700;">{_fmt(col_of)}</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#8a9ab5;">{_pct(col_of):.1f}% of total</div>
+    </div>
+    <div style="flex:1;min-width:140px;">
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;letter-spacing:0.12em;color:#16a34a;text-transform:uppercase;">Own Funds</div>
+      <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:#f5f0e8;font-weight:700;">{_fmt(col_own)}</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#8a9ab5;">{_pct(col_own):.1f}% of total</div>
+    </div>
+    <div style="flex:1;min-width:140px;border-left:1px solid #1e3050;padding-left:1.5rem;">
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;letter-spacing:0.12em;color:#c9a84c;text-transform:uppercase;">Total Funding</div>
+      <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:#c9a84c;font-weight:700;">{_fmt(grand)}</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#8a9ab5;">100%</div>
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ── Gearing indicator ─────────────────────────────────────────────────────────
+external_debt = col_bp + col_of          # all borrowed funds
+debt_pct   = _pct(external_debt)
+own_pct    = _pct(col_own)
+gearing_ratio = (external_debt / col_own) if col_own else None
+
+if grand > 0:
+    if own_pct >= 40:
+        g_color, g_label, g_note = "#16a34a", "CONSERVATIVE", "Strong equity contribution — well-capitalised structure."
+    elif own_pct >= 25:
+        g_color, g_label, g_note = "#f59e0b", "MODERATE", "Acceptable equity, but debt-weighted. Monitor serviceability."
+    elif own_pct >= 10:
+        g_color, g_label, g_note = "#e8610a", "AGGRESSIVE", "Thin equity buffer — highly geared. Scrutinise repayment capacity."
     else:
-        try:
-            api_key = st.secrets["ANTHROPIC_API_KEY"]
-        except Exception:
-            import os
-            api_key = os.environ.get("ANTHROPIC_API_KEY")
+        g_color, g_label, g_note = "#dc2626", "HIGHLY GEARED", "Minimal owner contribution — significant risk concentration in debt."
 
-        if not api_key:
-            st.error("⚠️ ANTHROPIC_API_KEY not configured — cannot run extraction.")
-        else:
-            with st.spinner("🤖 Extracting financial data… this may take 30–60 seconds."):
-                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-                    tmp.write(uploaded_financials.getvalue())
-                    tmp_path = tmp.name
-
-                try:
-                    result = extract_financials(tmp_path, api_key=api_key)
-                    if result.success:
-                        st.session_state.financial_extraction = to_fact_sheet_defaults(result)
-                        st.success("✅ Financials extracted — Section 05 below has been pre-filled. Review and edit as needed.")
-                    else:
-                        st.error(f"Extraction failed: {result.warning or 'unknown error'}")
-                except Exception as e:
-                    st.error(f"Extraction failed: {e}")
-                    st.info("You can still fill Section 05 manually below.")
-
-# Show current extraction summary if present (same visual pattern as bank analysis card)
-_fe = st.session_state.get("financial_extraction") or {}
-if _fe:
+    gr_txt = f"{gearing_ratio:.2f} : 1" if gearing_ratio is not None else "n/a (no own funds)"
     st.markdown(f"""
-    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-left:3px solid #1d4ed8;
-                border-radius:0 4px 4px 0; padding:1rem 1.25rem; margin:0.5rem 0 1.5rem;">
-        <div style="font-family:'IBM Plex Mono',monospace; font-size:0.62rem; letter-spacing:0.15em;
-                    color:#1d4ed8; text-transform:uppercase; margin-bottom:0.5rem;">
-            🤖 AI Extraction Result — {_fe.get('company_name','')}
+    <div style="background:#111e33;border:1px solid #1e3050;border-left:3px solid {g_color};border-radius:0 4px 4px 0;padding:0.9rem 1.25rem;margin-top:0.6rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.75rem;">
+        <div>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:0.62rem;letter-spacing:0.12em;color:#8a9ab5;text-transform:uppercase;">Debt : Equity Gearing</span>
+          <span style="font-family:'Playfair Display',serif;font-size:1.2rem;color:{g_color};font-weight:700;margin-left:0.5rem;">{gr_txt}</span>
+          <span style="background:{g_color};color:#fff;font-family:'IBM Plex Mono',monospace;font-size:0.6rem;font-weight:600;letter-spacing:0.1em;padding:0.15rem 0.6rem;border-radius:2px;margin-left:0.75rem;">{g_label}</span>
         </div>
-        <div style="color:#1a1a1a; font-size:0.85rem; line-height:1.6;">
-            <strong>Periods found:</strong> {', '.join(_fe.get('periods', [])) or '—'} &nbsp;|&nbsp;
-            <strong>Most recent revenue:</strong> R {_fe.get('revenue_p2', 0):,.0f}
-        </div>
-        <div style="color:#555; font-size:0.78rem; margin-top:0.5rem; font-style:italic;">
-            {_fe.get('extraction_notes','')}
-        </div>
-        <div style="color:#b45309; font-size:0.75rem; margin-top:0.5rem;">
-            ⚠️ Confirm the FY dropdowns below (Period 1 / Period 2) actually match these extracted periods before submitting.
-        </div>
+        <div style="color:#8a9ab5;font-size:0.78rem;">Debt {debt_pct:.0f}% · Own Funds {own_pct:.0f}%</div>
+      </div>
+      <div style="color:#b8c8de;font-size:0.8rem;margin-top:0.4rem;">{g_note}</div>
     </div>
     """, unsafe_allow_html=True)
-    if st.button("🗑  Clear Extraction", key="clear_financials"):
-        st.session_state.financial_extraction = None
-        st.rerun()
+
+# Persist for payload use after form submit
+st.session_state.saf_table = saf_edited
+st.session_state.saf_summary = {
+    "line_items": saf_display.to_dict(orient="records"),
+    "totals": {
+        "business_partners": col_bp,
+        "outside_finance": col_of,
+        "own_funds": col_own,
+        "grand_total": grand,
+    },
+    "funding_mix_pct": {
+        "business_partners": round(_pct(col_bp), 1),
+        "outside_finance": round(_pct(col_of), 1),
+        "own_funds": round(_pct(col_own), 1),
+    },
+    "gearing": {
+        "external_debt": external_debt,
+        "debt_pct": round(debt_pct, 1),
+        "own_funds_pct": round(own_pct, 1),
+        "debt_to_equity_ratio": round(gearing_ratio, 2) if gearing_ratio is not None else None,
+        "rating": g_label if grand > 0 else None,
+    },
+}
 
 st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
 
@@ -562,23 +638,23 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     _mgt_label = f"Mgt Accs ({mgt_months})"
     c3.markdown(f"<div style='padding-top:0.55rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
 
-    revenue_2024 = c1.number_input("Revenue P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("revenue_p1", 0.0))
-    revenue_2025    = c2.number_input("Revenue P2",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("revenue_p2", 0.0))
+    revenue_2024    = c1.number_input("Revenue P1",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    revenue_2025    = c2.number_input("Revenue P2",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     revenue_mgt     = c3.number_input("Revenue MgtAccs",min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Revenue / Turnover")
 
-    gp_2024         = c1.number_input("GP P1",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("gp_p1", 0.0))
-    gp_2025         = c2.number_input("GP P2",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("gp_p2", 0.0))
+    gp_2024         = c1.number_input("GP P1",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    gp_2025         = c2.number_input("GP P2",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     gp_mgt          = c3.number_input("GP Mgt",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Gross Profit")
 
-    ebitda_2024     = c1.number_input("EBITDA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ebitda_p1", 0.0))
-    ebitda_2025     = c2.number_input("EBITDA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ebitda_p2", 0.0))
+    ebitda_2024     = c1.number_input("EBITDA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    ebitda_2025     = c2.number_input("EBITDA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     ebitda_mgt      = c3.number_input("EBITDA Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("EBITDA")
 
-    np_2024         = c1.number_input("NP P1", step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("np_p1", 0.0))
-    np_2025         = c2.number_input("NP P2", step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("np_p2", 0.0))
+    np_2024         = c1.number_input("NP P1", step=1000.0, format="%.0f", label_visibility="collapsed")
+    np_2025         = c2.number_input("NP P2", step=1000.0, format="%.0f", label_visibility="collapsed")
     np_mgt          = c3.number_input("NP Mgt",  step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Net Profit")
 
@@ -599,23 +675,23 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     c2.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{fy_period_2}</div>", unsafe_allow_html=True)
     c3.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
 
-    curr_assets_2024  = c1.number_input("CA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ca_p1", 0.0))
-    curr_assets_2025  = c2.number_input("CA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ca_p2", 0.0))
+    curr_assets_2024  = c1.number_input("CA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    curr_assets_2025  = c2.number_input("CA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     curr_assets_mgt   = c3.number_input("CA Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Current Assets")
 
-    curr_liab_2024    = c1.number_input("CL P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("cl_p1", 0.0))
-    curr_liab_2025    = c2.number_input("CL P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("cl_p2", 0.0))
+    curr_liab_2024    = c1.number_input("CL P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    curr_liab_2025    = c2.number_input("CL P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     curr_liab_mgt     = c3.number_input("CL Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Current Liabilities")
 
-    total_debt_2024   = c1.number_input("TD P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("debt_p1", 0.0))
-    total_debt_2025   = c2.number_input("TD P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("debt_p2", 0.0))
+    total_debt_2024   = c1.number_input("TD P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    total_debt_2025   = c2.number_input("TD P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     total_debt_mgt    = c3.number_input("TD Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Total Debt / Liabilities")
 
-    equity_2024       = c1.number_input("EQ P1", step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("equity_p1", 0.0))
-    equity_2025       = c2.number_input("EQ P2", step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("equity_p2", 0.0))
+    equity_2024       = c1.number_input("EQ P1", step=1000.0, format="%.0f", label_visibility="collapsed")
+    equity_2025       = c2.number_input("EQ P2", step=1000.0, format="%.0f", label_visibility="collapsed")
     equity_mgt        = c3.number_input("EQ Mgt",  step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Total Equity")
 
@@ -780,6 +856,7 @@ if submitted:
         "why_funding_best_option": why_funding_best,
         "total_funding_required": total_funding_required,
         "use_of_funds": fund_rows,
+        "sources_and_application_of_funds": st.session_state.get("saf_summary", {}),
         "cost_benefit_commentary": cost_benefit,
         "revenue_streams": revenue_streams,
         "payment_terms": payment_terms,
@@ -872,6 +949,17 @@ State the funding background and rationale. Present the use of funds as a table:
 | Line Item | Amount (ZAR) | % of Total | Funded By |
 Comment on appropriateness, cost-benefit, and whether the entrepreneur contribution is adequate. Note professional/legal fees and raising fee accuracy.
 
+## 3A. SOURCES & APPLICATION OF FUNDS / GEARING ANALYSIS
+Using the "sources_and_application_of_funds" data, present the funding structure as a table showing each line item split across the three sources:
+| Application (Line Item) | Business Partners (R) | Outside Finance (R) | Own Funds (R) | Total (R) |
+Add a totals row and a funding-mix percentage row (each source as % of grand total).
+
+Then analyse the gearing and financial structure:
+- State the debt-to-equity gearing ratio and what it means for this deal.
+- Assess whether the entrepreneur's Own Funds contribution is adequate (benchmark: 25%+ is reasonable, 40%+ is conservative/strong, below 10% is highly geared and higher risk).
+- Comment on how the addition of the new facility (Business Partners) reshapes the balance sheet and the overall gearing.
+- Flag any concern where the structure is debt-heavy or the owner has minimal skin in the game.
+
 ## 4. REVENUE MODEL ANALYSIS
 Describe each revenue stream, payment terms, and margin profile. Comment on revenue diversification and whether the model is sustainable. Note any seasonality risk.
 
@@ -946,32 +1034,7 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
         # ── For clients: clear the output display (they should not see the memo)
         if _is_client:
             output_placeholder.empty()
-            
-        # ── Branded PDF generation ──────────────────────────────────────────────
-        pdf_bytes = None
-        if not _is_client:
-            try:
-                with st.spinner("🎨 Rendering branded PDF..."):
-                    pdf_path = f"/tmp/memo_{business_name.replace(' ', '_')}.pdf"
-                    render_deal_pdf(
-                        payload=payload,
-                        full_output_markdown=full_output,
-                        flags=flags,
-                        fy_period_1=fy_period_1,
-                        fy_period_2=fy_period_2,
-                        revenue_2024=revenue_2024, revenue_2025=revenue_2025,
-                        ebitda_2024=ebitda_2024, ebitda_2025=ebitda_2025,
-                        curr_assets_2024=curr_assets_2024, curr_assets_2025=curr_assets_2025,
-                        curr_liab_2024=curr_liab_2024, curr_liab_2025=curr_liab_2025,
-                        total_debt_2024=total_debt_2024, total_debt_2025=total_debt_2025,
-                        equity_2024=equity_2024, equity_2025=equity_2025,
-                        output_path=pdf_path,
-                    )
-                    with open(pdf_path, "rb") as f:
-                        pdf_bytes = f.read()
-            except Exception as e:
-                st.warning(f"⚠️ Branded PDF generation failed: {e} — other download formats still available below.")   
-            
+
         # ── Email delivery ────────────────────────────────────────────────────
         subject = f"[ScaleForce] Deal Assessment — {business_name} — {datetime.today().strftime('%d %b %Y')}"
         email_sent = send_memo_email(subject, full_output, business_name, "Deal Fact Sheet Assessment")
@@ -981,7 +1044,7 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
         # ── Download buttons — multiple formats ───────────────────────────────
         if not _is_client:
             st.markdown("**Download Assessment:**")
-            dl1, dl2, dl3, dl4 = st.columns(4)
+            dl1, dl2, dl3 = st.columns(3)
 
         dl1.download_button(
             label="⬇  Download as .txt",
@@ -1033,16 +1096,6 @@ tr:nth-child(even) td{{background:#f8f9fb}}
             use_container_width=True,
             help="Opens in browser — print to PDF via File > Print > Save as PDF"
         )
-        
-        if pdf_bytes:
-            dl4.download_button(
-                label="⬇  Download Branded PDF",
-                data=pdf_bytes,
-                file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-                help="Navy/gold branded PDF with charts — ready to send to credit committee"
-            )
 
         st.caption("💡 Tip: The .html file gives the best view and can be printed to PDF from your browser (File → Print → Save as PDF)")
 
