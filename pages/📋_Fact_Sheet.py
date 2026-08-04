@@ -3,6 +3,9 @@ import json
 import base64
 import pandas as pd
 from datetime import datetime
+from financial_extractor import extract_financials, to_fact_sheet_defaults
+import tempfile
+from pdf_memo_renderer import render_deal_pdf
 from anthropic import Anthropic
 from utils import require_team_login, send_memo_email
 
@@ -14,7 +17,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ── Require team login ─────────────────────────────────────────────────────────
 # ── Detect client token access ──────────────────────────────────────────────
 _token = st.query_params.get("token", "")
 _is_client = bool(_token)
@@ -238,7 +240,6 @@ st.markdown("""
 # BANK STATEMENT ANALYZER (runs BEFORE the form — needs interactive processing)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Initialise session state for bank analysis results
 if "bank_analysis" not in st.session_state:
     st.session_state.bank_analysis = None
 
@@ -275,7 +276,6 @@ if analyse_clicked:
                 try:
                     client = Anthropic(api_key=api_key)
 
-                    # Build document blocks from uploaded PDFs
                     doc_blocks = []
                     for f in uploaded_statements:
                         pdf_bytes = f.read()
@@ -313,7 +313,6 @@ Base everything strictly on what is actually in the statements. Do not invent fi
                     )
 
                     raw = "".join(block.text for block in response.content if hasattr(block, "text"))
-                    # Clean any accidental code fences
                     raw = raw.replace("```json", "").replace("```", "").strip()
 
                     parsed = json.loads(raw)
@@ -326,7 +325,6 @@ Base everything strictly on what is actually in the statements. Do not invent fi
                     st.error(f"Analysis failed: {e}")
                     st.info("You can still fill Section 06 manually below.")
 
-# Show current analysis summary if present
 if st.session_state.bank_analysis:
     ba = st.session_state.bank_analysis
     st.markdown(f"""
@@ -351,6 +349,82 @@ if st.session_state.bank_analysis:
         st.session_state.bank_analysis = None
         st.rerun()
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# FINANCIAL STATEMENT ANALYZER (runs BEFORE the form — mirrors Bank Statement block)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+if "financial_extraction" not in st.session_state:
+    st.session_state.financial_extraction = None
+
+st.markdown('<div class="section-label">🤖 Automated Financial Statement Extraction (Optional)</div>', unsafe_allow_html=True)
+st.markdown('<div class="helper-tip">💡 Upload the Annual Financial Statements or Management Accounts PDF. The AI will extract key figures and pre-fill Section 05 below. Review and edit before submitting.</div>', unsafe_allow_html=True)
+
+fin_col1, fin_col2 = st.columns([2, 1])
+with fin_col1:
+    uploaded_financials = st.file_uploader(
+        "Upload Financial Statements PDF",
+        type=["pdf"],
+        help="Text-based or scanned PDFs both work. AFS, management accounts, or audit reports.",
+        key="financials_uploader"
+    )
+with fin_col2:
+    st.markdown("<div style='height:1.8rem'></div>", unsafe_allow_html=True)
+    extract_fin_clicked = st.button("🔍  Extract Financials", use_container_width=True, key="extract_fin_btn")
+
+if extract_fin_clicked:
+    if not uploaded_financials:
+        st.warning("Please upload a financials PDF first.")
+    else:
+        try:
+            api_key = st.secrets["ANTHROPIC_API_KEY"]
+        except Exception:
+            import os
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+
+        if not api_key:
+            st.error("⚠️ ANTHROPIC_API_KEY not configured — cannot run extraction.")
+        else:
+            with st.spinner("🤖 Extracting financial data… this may take 30–60 seconds."):
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                    tmp.write(uploaded_financials.getvalue())
+                    tmp_path = tmp.name
+
+                try:
+                    result = extract_financials(tmp_path, api_key=api_key)
+                    if result.success:
+                        st.session_state.financial_extraction = to_fact_sheet_defaults(result)
+                        st.success("✅ Financials extracted — Section 05 below has been pre-filled. Review and edit as needed.")
+                    else:
+                        st.error(f"Extraction failed: {result.warning or 'unknown error'}")
+                except Exception as e:
+                    st.error(f"Extraction failed: {e}")
+                    st.info("You can still fill Section 05 manually below.")
+
+_fe = st.session_state.get("financial_extraction") or {}
+if _fe:
+    st.markdown(f"""
+    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-left:3px solid #1d4ed8;
+                border-radius:0 4px 4px 0; padding:1rem 1.25rem; margin:0.5rem 0 1.5rem;">
+        <div style="font-family:'IBM Plex Mono',monospace; font-size:0.62rem; letter-spacing:0.15em;
+                    color:#1d4ed8; text-transform:uppercase; margin-bottom:0.5rem;">
+            🤖 AI Extraction Result — {_fe.get('company_name','')}
+        </div>
+        <div style="color:#1a1a1a; font-size:0.85rem; line-height:1.6;">
+            <strong>Periods found:</strong> {', '.join(_fe.get('periods', [])) or '—'} &nbsp;|&nbsp;
+            <strong>Most recent revenue:</strong> R {_fe.get('revenue_p2', 0):,.0f}
+        </div>
+        <div style="color:#555; font-size:0.78rem; margin-top:0.5rem; font-style:italic;">
+            {_fe.get('extraction_notes','')}
+        </div>
+        <div style="color:#b45309; font-size:0.75rem; margin-top:0.5rem;">
+            ⚠️ Confirm the FY dropdowns below (Period 1 / Period 2) actually match these extracted periods before submitting.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("🗑  Clear Extraction", key="clear_financials"):
+        st.session_state.financial_extraction = None
+        st.rerun()
+
 st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -358,7 +432,7 @@ st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 st.markdown('<div class="section-label">💰 Sources & Application of Funds (Gearing Analysis)</div>', unsafe_allow_html=True)
-st.markdown('<div class="helper-tip">💡 Split each line item across the three funding sources. Rows auto-total, and the funding mix at the bottom reveals the gearing. Add your own rows (e.g. Legal Fees, Raising Fees) directly in the table — the last blank row lets you add more.</div>', unsafe_allow_html=True)
+st.markdown('<div class="helper-tip">💡 Split each line item across the three funding sources. Rows auto-total, and the funding mix at the bottom reveals the gearing. Add your own rows (e.g. Legal Fees, Raising Fees) directly in the table — the last blank row lets you add more. Negative values are allowed.</div>', unsafe_allow_html=True)
 
 st.markdown("""
 <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem;">
@@ -377,7 +451,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Default line items (editable, not hardcoded — user can rename, delete, or add)
 _default_saf = pd.DataFrame([
     {"Description": "Land and buildings", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
     {"Description": "Furniture and fittings", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
@@ -407,7 +480,6 @@ saf_edited = st.data_editor(
     },
 )
 
-# ── Compute totals & gearing ──────────────────────────────────────────────────
 saf_clean = saf_edited.fillna(0)
 col_bp   = float(saf_clean["Business Partners"].sum())
 col_of   = float(saf_clean["Outside Finance"].sum())
@@ -416,28 +488,26 @@ grand    = col_bp + col_of + col_own
 
 def _pct(v): return (v / grand * 100) if grand else 0.0
 
-# Row totals for display
 saf_display = saf_clean.copy()
 saf_display["Total"] = saf_display[["Business Partners","Outside Finance","Own Funds"]].sum(axis=1)
 
-# ── Totals & funding-mix panel ────────────────────────────────────────────────
 def _fmt(v): return f"R {v:,.0f}"
 
 st.markdown(f"""
 <div style="background:#0a1628;border:1px solid #1e3050;border-top:2px solid #c9a84c;border-radius:4px;padding:1.1rem 1.5rem;margin-top:0.75rem;">
   <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center;">
     <div style="flex:1;min-width:140px;">
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;letter-spacing:0.12em;color:#1d4ed8;text-transform:uppercase;">Business Partners</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;letter-spacing:0.12em;color:#3b82f6;text-transform:uppercase;">Business Partners</div>
       <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:#f5f0e8;font-weight:700;">{_fmt(col_bp)}</div>
       <div style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#8a9ab5;">{_pct(col_bp):.1f}% of total</div>
     </div>
     <div style="flex:1;min-width:140px;">
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;letter-spacing:0.12em;color:#e8610a;text-transform:uppercase;">Outside Finance</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;letter-spacing:0.12em;color:#f97316;text-transform:uppercase;">Outside Finance</div>
       <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:#f5f0e8;font-weight:700;">{_fmt(col_of)}</div>
       <div style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#8a9ab5;">{_pct(col_of):.1f}% of total</div>
     </div>
     <div style="flex:1;min-width:140px;">
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;letter-spacing:0.12em;color:#16a34a;text-transform:uppercase;">Own Funds</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;letter-spacing:0.12em;color:#22c55e;text-transform:uppercase;">Own Funds</div>
       <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:#f5f0e8;font-weight:700;">{_fmt(col_own)}</div>
       <div style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#8a9ab5;">{_pct(col_own):.1f}% of total</div>
     </div>
@@ -450,11 +520,11 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Gearing indicator ─────────────────────────────────────────────────────────
-external_debt = col_bp + col_of          # all borrowed funds
+external_debt = col_bp + col_of
 debt_pct   = _pct(external_debt)
 own_pct    = _pct(col_own)
 gearing_ratio = (external_debt / col_own) if col_own else None
+g_label = None
 
 if grand > 0:
     if own_pct >= 40:
@@ -468,20 +538,19 @@ if grand > 0:
 
     gr_txt = f"{gearing_ratio:.2f} : 1" if gearing_ratio is not None else "n/a (no own funds)"
     st.markdown(f"""
-    <div style="background:#111e33;border:1px solid #1e3050;border-left:3px solid {g_color};border-radius:0 4px 4px 0;padding:0.9rem 1.25rem;margin-top:0.6rem;">
+    <div style="background:#f8f9fb;border:1px solid #dde1e8;border-left:3px solid {g_color};border-radius:0 4px 4px 0;padding:0.9rem 1.25rem;margin-top:0.6rem;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.75rem;">
         <div>
-          <span style="font-family:'IBM Plex Mono',monospace;font-size:0.62rem;letter-spacing:0.12em;color:#8a9ab5;text-transform:uppercase;">Debt : Equity Gearing</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:0.62rem;letter-spacing:0.12em;color:#555e6e;text-transform:uppercase;">Debt : Equity Gearing</span>
           <span style="font-family:'Playfair Display',serif;font-size:1.2rem;color:{g_color};font-weight:700;margin-left:0.5rem;">{gr_txt}</span>
           <span style="background:{g_color};color:#fff;font-family:'IBM Plex Mono',monospace;font-size:0.6rem;font-weight:600;letter-spacing:0.1em;padding:0.15rem 0.6rem;border-radius:2px;margin-left:0.75rem;">{g_label}</span>
         </div>
-        <div style="color:#8a9ab5;font-size:0.78rem;">Debt {debt_pct:.0f}% · Own Funds {own_pct:.0f}%</div>
+        <div style="color:#555e6e;font-size:0.78rem;">Debt {debt_pct:.0f}% · Own Funds {own_pct:.0f}%</div>
       </div>
-      <div style="color:#b8c8de;font-size:0.8rem;margin-top:0.4rem;">{g_note}</div>
+      <div style="color:#1a1a1a;font-size:0.8rem;margin-top:0.4rem;">{g_note}</div>
     </div>
     """, unsafe_allow_html=True)
 
-# Persist for payload use after form submit
 st.session_state.saf_table = saf_edited
 st.session_state.saf_summary = {
     "line_items": saf_display.to_dict(orient="records"),
@@ -588,7 +657,7 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     fund_amounts    = c2.text_area("Amount (ZAR, one per line)", height=140,
         placeholder="1,200,000\n500,000\n85,000\n57,000\n200,000")
     fund_funded_by  = c3.text_area("Funded By (one per line)", height=140,
-        placeholder="ScaleForce\nScaleForce\nScaleForce\nScaleForce\nEntrepreneur")
+        placeholder="Inland Fund\nInland Fund\nInland Fund\nInland Fund\nEntrepreneur")
 
     cost_benefit    = st.text_area("Cost-Benefit Analysis / ROI Commentary (if applicable)", height=70,
         placeholder="E.g. new equipment expected to increase capacity by 30%, generating R400k additional monthly revenue…")
@@ -621,13 +690,11 @@ with st.form("fact_sheet_form", clear_on_submit=False):
                             "6 months", "7 months", "8 months", "9 months", "10 months",
                             "11 months", "12 months"]
 
-    # Management accounts as-at date + months (kept above the table, compact)
     ma1, ma2 = st.columns([1, 3])
     mgt_months  = ma1.selectbox("Mgt Accounts — Months Reported", _month_count_options,
                                 index=2, help="How many months of the current year the management accounts cover")
     mgt_as_at   = ma2.text_input("Mgt Accounts As-At Date", placeholder="e.g. 31 August 2025")
 
-    # ── Income Statement — dropdowns sit IN the header row, in line with Line Item ──
     st.markdown("**Income Statement**")
     c0, c1, c2, c3 = st.columns([2,2,2,2])
     c0.markdown("<div style='padding-top:0.55rem;font-style:italic;color:#1d4ed8;font-weight:500;'>Line Item</div>", unsafe_allow_html=True)
@@ -638,27 +705,26 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     _mgt_label = f"Mgt Accs ({mgt_months})"
     c3.markdown(f"<div style='padding-top:0.55rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
 
-    revenue_2024    = c1.number_input("Revenue P1",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    revenue_2025    = c2.number_input("Revenue P2",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    revenue_2024 = c1.number_input("Revenue P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("revenue_p1", 0.0))
+    revenue_2025    = c2.number_input("Revenue P2",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("revenue_p2", 0.0))
     revenue_mgt     = c3.number_input("Revenue MgtAccs",min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Revenue / Turnover")
 
-    gp_2024         = c1.number_input("GP P1",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    gp_2025         = c2.number_input("GP P2",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    gp_2024         = c1.number_input("GP P1",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("gp_p1", 0.0))
+    gp_2025         = c2.number_input("GP P2",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("gp_p2", 0.0))
     gp_mgt          = c3.number_input("GP Mgt",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Gross Profit")
 
-    ebitda_2024     = c1.number_input("EBITDA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    ebitda_2025     = c2.number_input("EBITDA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    ebitda_2024     = c1.number_input("EBITDA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ebitda_p1", 0.0))
+    ebitda_2025     = c2.number_input("EBITDA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ebitda_p2", 0.0))
     ebitda_mgt      = c3.number_input("EBITDA Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("EBITDA")
 
-    np_2024         = c1.number_input("NP P1", step=1000.0, format="%.0f", label_visibility="collapsed")
-    np_2025         = c2.number_input("NP P2", step=1000.0, format="%.0f", label_visibility="collapsed")
+    np_2024         = c1.number_input("NP P1", step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("np_p1", 0.0))
+    np_2025         = c2.number_input("NP P2", step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("np_p2", 0.0))
     np_mgt          = c3.number_input("NP Mgt",  step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Net Profit")
 
-    # Derived margins
     gp_margin_2024 = (gp_2024 / revenue_2024 * 100) if revenue_2024 else 0
     gp_margin_2025 = (gp_2025 / revenue_2025 * 100) if revenue_2025 else 0
     np_margin_2024 = (np_2024 / revenue_2024 * 100) if revenue_2024 else 0
@@ -667,7 +733,6 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     income_stmt_notes = st.text_area("Income Statement — Trend & Anomaly Notes", height=80,
         placeholder="Note any line items that look inconsistent year-on-year. Flag anything requiring further DD…")
 
-    # Balance Sheet Ratios
     st.markdown("**Balance Sheet Inputs**")
     c0, c1, c2, c3 = st.columns([2,2,2,2])
     c0.markdown("<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>Line Item</div>", unsafe_allow_html=True)
@@ -675,23 +740,23 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     c2.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{fy_period_2}</div>", unsafe_allow_html=True)
     c3.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
 
-    curr_assets_2024  = c1.number_input("CA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    curr_assets_2025  = c2.number_input("CA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    curr_assets_2024  = c1.number_input("CA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ca_p1", 0.0))
+    curr_assets_2025  = c2.number_input("CA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ca_p2", 0.0))
     curr_assets_mgt   = c3.number_input("CA Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Current Assets")
 
-    curr_liab_2024    = c1.number_input("CL P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    curr_liab_2025    = c2.number_input("CL P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    curr_liab_2024    = c1.number_input("CL P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("cl_p1", 0.0))
+    curr_liab_2025    = c2.number_input("CL P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("cl_p2", 0.0))
     curr_liab_mgt     = c3.number_input("CL Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Current Liabilities")
 
-    total_debt_2024   = c1.number_input("TD P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
-    total_debt_2025   = c2.number_input("TD P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
+    total_debt_2024   = c1.number_input("TD P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("debt_p1", 0.0))
+    total_debt_2025   = c2.number_input("TD P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("debt_p2", 0.0))
     total_debt_mgt    = c3.number_input("TD Mgt",  min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Total Debt / Liabilities")
 
-    equity_2024       = c1.number_input("EQ P1", step=1000.0, format="%.0f", label_visibility="collapsed")
-    equity_2025       = c2.number_input("EQ P2", step=1000.0, format="%.0f", label_visibility="collapsed")
+    equity_2024       = c1.number_input("EQ P1", step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("equity_p1", 0.0))
+    equity_2025       = c2.number_input("EQ P2", step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("equity_p2", 0.0))
     equity_mgt        = c3.number_input("EQ Mgt",  step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Total Equity")
 
@@ -703,14 +768,12 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     # ── SECTION 6: Bank Statement Analysis ───────────────────────────────────
     st.markdown('<div class="section-label">06 · Bank Statement Analysis</div>', unsafe_allow_html=True)
 
-    # Pull AI analysis defaults if available
     _ba = st.session_state.get("bank_analysis") or {}
     if _ba:
         st.markdown('<div class="helper-tip">✅ Fields below pre-filled by AI analysis. Review and adjust before submitting.</div>', unsafe_allow_html=True)
     else:
         st.markdown('<div class="helper-tip">💡 Typically cover 3–6 months. Note RDs, unusual debits, overdraft usage, and cash flow patterns. (Or use the AI analyser above to auto-fill.)</div>', unsafe_allow_html=True)
 
-    # Determine default month selection
     _month_options = ["1", "2", "3", "4", "5", "6", "12", "Not yet received"]
     _ai_months = str(_ba.get("months_reviewed", "")).strip()
     _month_index = _month_options.index(_ai_months) if _ai_months in _month_options else 5
@@ -774,14 +837,13 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     submitted = st.form_submit_button("⚡  GENERATE DEAL ASSESSMENT", use_container_width=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# POST-SUBMIT
+# POST-SUBMIT — PHASE 1: build payload, draft evaluation criteria
 # ═══════════════════════════════════════════════════════════════════════════════
 if submitted:
     if not business_name:
         st.error("Please enter the Business Name before submitting.")
         st.stop()
 
-    # ── Parse use-of-funds table ───────────────────────────────────────────────
     fi_lines  = [l.strip() for l in fund_items.strip().splitlines()   if l.strip()]
     fa_lines  = [l.strip() for l in fund_amounts.strip().splitlines() if l.strip()]
     fb_lines  = [l.strip() for l in fund_funded_by.strip().splitlines() if l.strip()]
@@ -792,7 +854,6 @@ if submitted:
         funder = fb_lines[i] if i < len(fb_lines) else ""
         fund_rows.append({"item": item, "amount": amt, "funded_by": funder})
 
-    # ── Derived ratios (auto-calculate for all periods) ───────────────────────
     def safe_ratio(n, d): return round(n/d, 2) if d else None
 
     ratios = {
@@ -808,7 +869,6 @@ if submitted:
         "np_margin_2025": round(np_margin_2025, 1),
     }
 
-    # ── Quick risk flags ───────────────────────────────────────────────────────
     flags = []
     if ratios["current_ratio_2025"] and ratios["current_ratio_2025"] < 1.0:
         flags.append(("CRITICAL", f"Current ratio below 1.0 in {fy_period_2} — cannot cover short-term obligations"))
@@ -832,7 +892,6 @@ if submitted:
             icon = {"CRITICAL":"⛔","HIGH":"🔴","MEDIUM":"🟡"}.get(sev,"•")
             st.markdown(f"{icon} **{sev}** — {msg}")
 
-    # ── Build payload for Claude ───────────────────────────────────────────────
     payload = {
         "deal_date": datetime.today().strftime("%d %B %Y"),
         "business_name": business_name,
@@ -908,12 +967,21 @@ if submitted:
         "analyst_preliminary_view": analyst_recommendation,
     }
 
-    # ── Store payload & draft the Evaluation Criteria matrix ───────────────────
+    # ── Persist for phase 2/3 and the PDF renderer ─────────────────────────────
     st.session_state.deal_payload = payload
+    st.session_state.deal_flags = flags
     st.session_state.deal_prompt_meta = {
         "fy_period_1": fy_period_1, "fy_period_2": fy_period_2,
         "mgt_label": _mgt_label, "mgt_months": mgt_months, "mgt_as_at": mgt_as_at,
         "business_name": business_name,
+    }
+    st.session_state.deal_pdf_figures = {
+        "revenue_2024": revenue_2024, "revenue_2025": revenue_2025,
+        "ebitda_2024": ebitda_2024, "ebitda_2025": ebitda_2025,
+        "curr_assets_2024": curr_assets_2024, "curr_assets_2025": curr_assets_2025,
+        "curr_liab_2024": curr_liab_2024, "curr_liab_2025": curr_liab_2025,
+        "total_debt_2024": total_debt_2024, "total_debt_2025": total_debt_2025,
+        "equity_2024": equity_2024, "equity_2025": equity_2025,
     }
 
     try:
@@ -929,7 +997,6 @@ if submitted:
     with st.spinner("🤖 Drafting evaluation criteria — assessing industry, entrepreneur, viability and risk…"):
         try:
             client = Anthropic(api_key=api_key)
-
             eval_prompt = f"""You are a senior South African credit analyst at Inland Fund. Based on the deal data below, draft an Evaluation Criteria assessment.
 
 DEAL DATA:
@@ -952,8 +1019,7 @@ The nine criteria:
 
 Return ONLY a strict JSON array, no markdown, no code fences, no preamble:
 [
-  {{"criterion": "The industry", "details": "...", "rating": "Low|Average|High"}},
-  ... (all nine, in order)
+  {{"criterion": "The industry", "details": "...", "rating": "Low|Average|High"}}
 ]"""
 
             resp = client.messages.create(
@@ -967,7 +1033,7 @@ Return ONLY a strict JSON array, no markdown, no code fences, no preamble:
             st.session_state.eval_matrix = pd.DataFrame(eval_rows)
             st.session_state.eval_stage = "review"
         except Exception as e:
-            st.warning(f"Could not auto-draft evaluation criteria ({e}). You can still generate the report — a blank matrix will be used.")
+            st.warning(f"Could not auto-draft evaluation criteria ({e}). A blank matrix will be used — you can fill it in.")
             st.session_state.eval_matrix = pd.DataFrame(
                 [{"criterion": c, "details": "", "rating": "Average"} for c in [
                     "The industry", "Evaluation of the entrepreneur including commitment",
@@ -978,13 +1044,9 @@ Return ONLY a strict JSON array, no markdown, no code fences, no preamble:
             st.session_state.eval_stage = "review"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 2 — REVIEW EVALUATION MATRIX, THEN GENERATE FINAL REPORT
+# PHASE 2 — REVIEW & EDIT EVALUATION MATRIX
 # ═══════════════════════════════════════════════════════════════════════════════
 if st.session_state.get("eval_stage") == "review" and not _is_client:
-    payload = st.session_state.deal_payload
-    meta = st.session_state.deal_prompt_meta
-    business_name = meta["business_name"]
-
     st.markdown("---")
     st.markdown('<div class="section-label">📝 Evaluation Criteria — Review & Edit Before Generating</div>', unsafe_allow_html=True)
     st.markdown('<div class="helper-tip">✅ The AI has drafted an assessment for each criterion below, drawing on real industry and market context. Review the narratives and ratings, edit anything you disagree with, then generate the final report — your edits are woven into the relevant sections.</div>', unsafe_allow_html=True)
@@ -1002,36 +1064,31 @@ if st.session_state.get("eval_stage") == "review" and not _is_client:
     )
     st.session_state.eval_matrix = edited_eval
 
-    gen_final = st.button("✅  Generate Final Assessment", use_container_width=True, key="gen_final_btn")
-
-    if gen_final:
-        st.session_state.eval_stage = "generate"
+    if st.button("✅  Generate Final Assessment", use_container_width=True, key="gen_final_btn"):
         st.session_state.eval_final = edited_eval.to_dict(orient="records")
+        st.session_state.eval_stage = "generate"
         st.rerun()
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 3 — GENERATE THE FULL REPORT (weaving in the evaluation criteria)
+# PHASE 3 — GENERATE FULL REPORT (weaving in evaluation criteria)
 # ═══════════════════════════════════════════════════════════════════════════════
 _run_generation = st.session_state.get("eval_stage") == "generate"
-# Clients skip the review step — generate straight through
 if _is_client and st.session_state.get("eval_stage") == "review":
-    st.session_state.eval_stage = "generate"
     st.session_state.eval_final = st.session_state.eval_matrix.to_dict(orient="records")
+    st.session_state.eval_stage = "generate"
     _run_generation = True
 
 if _run_generation:
-    payload = st.session_state.deal_payload
+    payload = dict(st.session_state.deal_payload)
     meta = st.session_state.deal_prompt_meta
+    flags = st.session_state.get("deal_flags", [])
+    figs = st.session_state.get("deal_pdf_figures", {})
     business_name = meta["business_name"]
     fy_period_1, fy_period_2 = meta["fy_period_1"], meta["fy_period_2"]
     _mgt_label, mgt_months, mgt_as_at = meta["mgt_label"], meta["mgt_months"], meta["mgt_as_at"]
     evaluation_criteria = st.session_state.get("eval_final", [])
-
-    # Inject evaluation criteria into the payload for the report
-    payload = dict(payload)
     payload["evaluation_criteria"] = evaluation_criteria
 
-    # ── Claude generation ──────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown('<div class="section-label">📄 Generating Deal Fact Sheet Assessment…</div>', unsafe_allow_html=True)
 
@@ -1047,7 +1104,7 @@ RULES:
 - Calculate and present ratios in tables with benchmark comparisons.
 - Identify trends across the two selected financial years and the latest management accounts (note the management accounts may cover only part of a year — treat them accordingly).
 - Flag anomalies, inconsistencies, and items requiring further due diligence.
-- You are given a set of analyst-reviewed EVALUATION CRITERIA (industry, entrepreneur, viability, etc.) each with a narrative and a Low/Average/High rating. Weave each one into the most relevant section — e.g. the industry narrative into Business Overview, the entrepreneur evaluation into Entrepreneur Profiles, financial viability into Financial Analysis, deal structure into the funding section, and so on. Preserve the analyst's rating for each. Also include a consolidated Evaluation Criteria summary table near the end.
+- You are given a set of analyst-reviewed EVALUATION CRITERIA (industry, entrepreneur, viability, etc.) each with a narrative and a Low/Average/High rating. Weave each one into the most relevant section — the industry narrative into Business Overview, the entrepreneur evaluation into Entrepreneur Profiles, financial viability into Financial Analysis, deal structure into the funding section, and so on. Preserve the analyst's rating for each. Also include a consolidated Evaluation Criteria summary table near the end.
 - Use Markdown formatting: ## for sections, ### for sub-sections, bold for key figures, tables where applicable."""
 
     user_prompt = f"""Generate a complete Deal Fact Sheet Assessment for Inland Fund based on the following data. Cover every section.
@@ -1081,7 +1138,7 @@ Add a totals row and a funding-mix percentage row (each source as % of grand tot
 Then analyse the gearing and financial structure:
 - State the debt-to-equity gearing ratio and what it means for this deal.
 - Assess whether the entrepreneur's Own Funds contribution is adequate (benchmark: 25%+ is reasonable, 40%+ is conservative/strong, below 10% is highly geared and higher risk).
-- Comment on how the addition of the new facility (Business Partners) reshapes the balance sheet and the overall gearing.
+- Comment on how the addition of the new facility (Business Partners) reshapes the balance sheet and overall gearing.
 - Flag any concern where the structure is debt-heavy or the owner has minimal skin in the game.
 - WEAVE IN the "Deal structure and pricing" criterion here, with its rating.
 
@@ -1091,11 +1148,11 @@ Describe each revenue stream, payment terms, and margin profile. Comment on reve
 ## 5. FINANCIAL ANALYSIS
 
 ### 5.1 Income Statement Summary
-Present a 3-period comparative table using the ACTUAL period labels from the data (Period 1 = {fy_period_1}, Period 2 = {fy_period_2}, and "{_mgt_label}" for the management accounts column):
+Present a 3-period comparative table using the ACTUAL period labels (Period 1 = {fy_period_1}, Period 2 = {fy_period_2}, and "{_mgt_label}" for the management accounts column):
 | Metric | {fy_period_1} | {fy_period_2} | {_mgt_label} | Trend |
 Include: Revenue, Gross Profit, GP Margin %, EBITDA, Net Profit, NP Margin %
 
-IMPORTANT: The management accounts cover {mgt_months} only (as at {mgt_as_at}), so do NOT compare them like-for-like against the full financial years. When commenting, annualise or contextualise the management-account figures appropriately.
+IMPORTANT: The management accounts cover {mgt_months} only (as at {mgt_as_at}), so do NOT compare them like-for-like against the full financial years. Contextualise appropriately (pro-rata run-rate).
 
 Trend analysis: highlight growth rates between {fy_period_1} and {fy_period_2}, margin compression/expansion, and any anomalies. WEAVE IN the "Financial viability" and "Financial risk vs business risk vs returns" criteria here, with their ratings.
 
@@ -1118,7 +1175,7 @@ Summarise entrepreneur and business credit results. Highlight any adverse findin
 ## 9. EVALUATION CRITERIA SUMMARY
 Present the full analyst-reviewed evaluation matrix as a consolidated table:
 | Criteria | Assessment Summary | Risk Rating |
-Use a concise one-line summary per criterion (the detail is already woven above) and the Low/Average/High rating. WEAVE IN the "Risk factors" criterion narrative just before or after this table.
+Use a concise one-line summary per criterion (detail is woven above) and the Low/Average/High rating. WEAVE IN the "Risk factors" criterion narrative just before or after this table.
 
 ## 10. RISK MATRIX
 Present all identified risks (auto-flagged + your own analysis) in a structured table:
@@ -1130,7 +1187,6 @@ List every open item that must be resolved before credit committee sign-off. For
 ## 12. ANALYST ASSESSMENT & RECOMMENDATION
 State the analyst's preliminary view clearly. Provide a concise 4–6 sentence rationale covering: business quality, financial strength, deal structure, security, and key risks. If recommending approval, suggest deal terms (amount, tenor, rate basis, security required)."""
 
-    # ── Load API key ──────────────────────────────────────────────────────────
     try:
         api_key = st.secrets["ANTHROPIC_API_KEY"]
     except Exception:
@@ -1163,9 +1219,33 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
             unsafe_allow_html=True
         )
 
-        # ── For clients: clear the output display (they should not see the memo)
         if _is_client:
             output_placeholder.empty()
+
+        # ── Branded PDF generation ──────────────────────────────────────────────
+        pdf_bytes = None
+        if not _is_client:
+            try:
+                with st.spinner("🎨 Rendering branded PDF..."):
+                    pdf_path = f"/tmp/memo_{business_name.replace(' ', '_')}.pdf"
+                    render_deal_pdf(
+                        payload=payload,
+                        full_output_markdown=full_output,
+                        flags=flags,
+                        fy_period_1=fy_period_1,
+                        fy_period_2=fy_period_2,
+                        revenue_2024=figs.get("revenue_2024", 0), revenue_2025=figs.get("revenue_2025", 0),
+                        ebitda_2024=figs.get("ebitda_2024", 0), ebitda_2025=figs.get("ebitda_2025", 0),
+                        curr_assets_2024=figs.get("curr_assets_2024", 0), curr_assets_2025=figs.get("curr_assets_2025", 0),
+                        curr_liab_2024=figs.get("curr_liab_2024", 0), curr_liab_2025=figs.get("curr_liab_2025", 0),
+                        total_debt_2024=figs.get("total_debt_2024", 0), total_debt_2025=figs.get("total_debt_2025", 0),
+                        equity_2024=figs.get("equity_2024", 0), equity_2025=figs.get("equity_2025", 0),
+                        output_path=pdf_path,
+                    )
+                    with open(pdf_path, "rb") as f:
+                        pdf_bytes = f.read()
+            except Exception as e:
+                st.warning(f"⚠️ Branded PDF generation failed: {e} — other download formats still available below.")
 
         # ── Email delivery ────────────────────────────────────────────────────
         subject = f"[Inland Fund] Deal Assessment — {business_name} — {datetime.today().strftime('%d %b %Y')}"
@@ -1173,39 +1253,32 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
         if email_sent:
             st.success("✅ Assessment emailed to the Inland Fund team inbox.")
 
-        # ── Allow starting over (clears the evaluation review stage) ───────────
-        if not _is_client:
-            if st.button("🔄  Start a New Assessment", key="reset_stage"):
-                for k in ("eval_stage", "eval_matrix", "eval_final", "deal_payload", "deal_prompt_meta"):
-                    st.session_state.pop(k, None)
-                st.rerun()
-
         # ── Download buttons — multiple formats ───────────────────────────────
         if not _is_client:
             st.markdown("**Download Assessment:**")
-            dl1, dl2, dl3 = st.columns(3)
+            dl1, dl2, dl3, dl4 = st.columns(4)
 
-        dl1.download_button(
-            label="⬇  Download as .txt",
-            data=full_output,
-            file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.txt",
-            mime="text/plain",
-            use_container_width=True,
-            help="Opens in Notepad on any Windows PC"
-        )
+            dl1.download_button(
+                label="⬇  Download as .txt",
+                data=full_output,
+                file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.txt",
+                mime="text/plain",
+                use_container_width=True,
+                help="Opens in Notepad on any Windows PC"
+            )
 
-        dl2.download_button(
-            label="⬇  Download as .md",
-            data=full_output,
-            file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.md",
-            mime="text/markdown",
-            use_container_width=True,
-            help="Use with Notion, Obsidian or VS Code"
-        )
+            dl2.download_button(
+                label="⬇  Download as .md",
+                data=full_output,
+                file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.md",
+                mime="text/markdown",
+                use_container_width=True,
+                help="Use with Notion, Obsidian or VS Code"
+            )
 
-        html_output = f"""<!DOCTYPE html>
+            html_output = f"""<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
-<title>ScaleForce — {business_name}</title>
+<title>Inland Fund — {business_name}</title>
 <style>
 body{{font-family:Arial,sans-serif;max-width:900px;margin:3rem auto;padding:2rem;color:#1a1a1a;line-height:1.7}}
 h1{{color:#e8610a;border-bottom:3px solid #e8610a;padding-bottom:0.5rem}}
@@ -1227,20 +1300,34 @@ tr:nth-child(even) td{{background:#f8f9fb}}
 <div class="ftr">Inland Fund · Confidential · AI-assisted — requires analyst review</div>
 </body></html>"""
 
-        dl3.download_button(
-            label="⬇  Download as .html",
-            data=html_output,
-            file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.html",
-            mime="text/html",
-            use_container_width=True,
-            help="Opens in browser — print to PDF via File > Print > Save as PDF"
-        )
+            dl3.download_button(
+                label="⬇  Download as .html",
+                data=html_output,
+                file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.html",
+                mime="text/html",
+                use_container_width=True,
+                help="Opens in browser — print to PDF via File > Print > Save as PDF"
+            )
 
-        st.caption("💡 Tip: The .html file gives the best view and can be printed to PDF from your browser (File → Print → Save as PDF)")
+            if pdf_bytes:
+                dl4.download_button(
+                    label="⬇  Download Branded PDF",
+                    data=pdf_bytes,
+                    file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    help="Navy/gold branded PDF with charts — ready to send to credit committee"
+                )
 
-        # ── Client thank-you (shown when accessed via token URL) ──────────────
-        params = st.query_params
-        if params.get("token"):
+            st.caption("💡 Tip: The .html file gives the best view and can be printed to PDF from your browser (File → Print → Save as PDF)")
+
+            if st.button("🔄  Start a New Assessment", key="reset_stage"):
+                for k in ("eval_stage", "eval_matrix", "eval_final", "deal_payload",
+                          "deal_prompt_meta", "deal_flags", "deal_pdf_figures"):
+                    st.session_state.pop(k, None)
+                st.rerun()
+
+        if _is_client:
             st.markdown("""
             <div style="background:#f0fdf4; border:1px solid #86efac; border-top:3px solid #16a34a;
                         border-radius:6px; padding:2.5rem; text-align:center; margin-top:2rem;">
