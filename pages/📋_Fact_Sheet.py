@@ -348,7 +348,6 @@ if st.session_state.bank_analysis:
     if st.button("🗑  Clear Analysis", key="clear_bank"):
         st.session_state.bank_analysis = None
         st.rerun()
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # FINANCIAL STATEMENT ANALYZER (runs BEFORE the form — mirrors Bank Statement block)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -428,150 +427,105 @@ if _fe:
 st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SOURCES & APPLICATION OF FUNDS (interactive — lives outside the form)
+# AFFORDABILITY CALCULATION (interactive — lives outside the form)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-st.markdown('<div class="section-label">💰 Sources & Application of Funds (Gearing Analysis)</div>', unsafe_allow_html=True)
-st.markdown('<div class="helper-tip">💡 Split each line item across the three funding sources. Rows auto-total, and the funding mix at the bottom reveals the gearing. Add your own rows (e.g. Legal Fees, Raising Fees) directly in the table — the last blank row lets you add more. Negative values are allowed.</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-label">🧮 Affordability Calculation (Optional)</div>', unsafe_allow_html=True)
+st.markdown('<div class="helper-tip">💡 Can the business service the proposed facility? Start from Net Profit After Tax (latest period), deduct the loan installment and any royalty — the surplus/shortfall calculates live. Use the "Treatment" column to add back non-cash / non-recurring items (e.g. Depreciation) or add further deductions. Add rows as needed, or leave it as-is to skip.</div>', unsafe_allow_html=True)
 
-st.markdown("""
-<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem;">
-  <div style="flex:1;min-width:180px;background:#eff6ff;border-left:3px solid #1d4ed8;border-radius:0 4px 4px 0;padding:0.6rem 0.9rem;">
-    <div style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;color:#1d4ed8;text-transform:uppercase;font-weight:600;">Business Partners</div>
-    <div style="color:#555;font-size:0.78rem;margin-top:0.2rem;">The lender advancing funds (Inland Fund)</div>
-  </div>
-  <div style="flex:1;min-width:180px;background:#fff7ed;border-left:3px solid #e8610a;border-radius:0 4px 4px 0;padding:0.6rem 0.9rem;">
-    <div style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;color:#e8610a;text-transform:uppercase;font-weight:600;">Outside Finance</div>
-    <div style="color:#555;font-size:0.78rem;margin-top:0.2rem;">Existing liabilities on the balance sheet — bank loans, mortgages, vehicle & trade finance</div>
-  </div>
-  <div style="flex:1;min-width:180px;background:#f0fdf4;border-left:3px solid #16a34a;border-radius:0 4px 4px 0;padding:0.6rem 0.9rem;">
-    <div style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;color:#16a34a;text-transform:uppercase;font-weight:600;">Own Funds</div>
-    <div style="color:#555;font-size:0.78rem;margin-top:0.2rem;">Entrepreneur equity / contribution — retained earnings, debtors, cash introduced</div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+_npat_default = float(_fe.get("np_p2", 0.0) or 0.0)
 
-_default_saf = pd.DataFrame([
-    {"Description": "Land and buildings", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
-    {"Description": "Furniture and fittings", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
-    {"Description": "Debtors", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
-    {"Description": "Investments", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
-    {"Description": "Bank", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
-    {"Description": "Deposits", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
-    {"Description": "Vehicles", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
-    {"Description": "Legal Fees", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
-    {"Description": "Raising Fees", "Business Partners": 0.0, "Outside Finance": 0.0, "Own Funds": 0.0},
+_default_afford = pd.DataFrame([
+    {"Item": "Net Profit After Tax (NPAT) — Latest Period", "Treatment": "NPAT (base)", "Amount (R)": _npat_default},
+    {"Item": "Loan Installment", "Treatment": "Less (−)", "Amount (R)": 0.0},
+    {"Item": "Royalty (if applicable)", "Treatment": "Less (−)", "Amount (R)": 0.0},
 ])
 
-if "saf_table" not in st.session_state:
-    st.session_state.saf_table = _default_saf
+if "afford_table" not in st.session_state:
+    st.session_state.afford_table = _default_afford
 
-saf_edited = st.data_editor(
-    st.session_state.saf_table,
+afford_edited = st.data_editor(
+    st.session_state.afford_table,
     num_rows="dynamic",
     use_container_width=True,
-    key="saf_editor",
+    key="afford_editor",
     column_config={
-        "Description": st.column_config.TextColumn("Description", width="large",
-            help="Line item — rename, delete, or add your own (e.g. Legal Fees, Raising Fees)"),
-        "Business Partners": st.column_config.NumberColumn("Business Partners (R)", format="%.0f"),
-        "Outside Finance":   st.column_config.NumberColumn("Outside Finance (R)",   format="%.0f"),
-        "Own Funds":         st.column_config.NumberColumn("Own Funds (R)",         format="%.0f"),
+        "Item": st.column_config.TextColumn("Item", width="large",
+            help="Line item — rename, delete, or add your own (e.g. Add back: Depreciation)"),
+        "Treatment": st.column_config.SelectboxColumn("Treatment",
+            options=["NPAT (base)", "Add back (+)", "Less (−)"], width="medium", required=True,
+            help="NPAT (base) = starting figure · Add back (+) = added to NPAT · Less (−) = deducted"),
+        "Amount (R)": st.column_config.NumberColumn("Amount (R)", format="%.0f"),
     },
 )
+st.session_state.afford_table = afford_edited
 
-saf_clean = saf_edited.fillna(0)
-col_bp   = float(saf_clean["Business Partners"].sum())
-col_of   = float(saf_clean["Outside Finance"].sum())
-col_own  = float(saf_clean["Own Funds"].sum())
-grand    = col_bp + col_of + col_own
+_af = afford_edited.copy()
+_af["Treatment"] = _af["Treatment"].fillna("Less (−)")
+_af["Amount (R)"] = pd.to_numeric(_af["Amount (R)"], errors="coerce").fillna(0.0)
 
-def _pct(v): return (v / grand * 100) if grand else 0.0
+def _afford_sum(treatment):
+    rows = _af[_af["Treatment"] == treatment]
+    return float(rows["Amount (R)"].sum()) if not rows.empty else 0.0
 
-saf_display = saf_clean.copy()
-saf_display["Total"] = saf_display[["Business Partners","Outside Finance","Own Funds"]].sum(axis=1)
+base_npat  = _afford_sum("NPAT (base)")
+addbacks   = _afford_sum("Add back (+)")
+deductions = _afford_sum("Less (−)")
+available  = base_npat + addbacks                       # cash available for debt service
+surplus    = available - deductions                     # surplus / (shortfall)
+coverage   = (available / deductions) if deductions else None
 
 def _fmt(v): return f"R {v:,.0f}"
 
-st.markdown(f"""
-<div style="background:#0a1628;border:1px solid #1e3050;border-top:2px solid #c9a84c;border-radius:4px;padding:1.1rem 1.5rem;margin-top:0.75rem;">
-  <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center;">
-    <div style="flex:1;min-width:140px;">
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;letter-spacing:0.12em;color:#3b82f6;text-transform:uppercase;">Business Partners</div>
-      <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:#f5f0e8;font-weight:700;">{_fmt(col_bp)}</div>
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#8a9ab5;">{_pct(col_bp):.1f}% of total</div>
-    </div>
-    <div style="flex:1;min-width:140px;">
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;letter-spacing:0.12em;color:#f97316;text-transform:uppercase;">Outside Finance</div>
-      <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:#f5f0e8;font-weight:700;">{_fmt(col_of)}</div>
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#8a9ab5;">{_pct(col_of):.1f}% of total</div>
-    </div>
-    <div style="flex:1;min-width:140px;">
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;letter-spacing:0.12em;color:#22c55e;text-transform:uppercase;">Own Funds</div>
-      <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:#f5f0e8;font-weight:700;">{_fmt(col_own)}</div>
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#8a9ab5;">{_pct(col_own):.1f}% of total</div>
-    </div>
-    <div style="flex:1;min-width:140px;border-left:1px solid #1e3050;padding-left:1.5rem;">
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;letter-spacing:0.12em;color:#c9a84c;text-transform:uppercase;">Total Funding</div>
-      <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:#c9a84c;font-weight:700;">{_fmt(grand)}</div>
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:#8a9ab5;">100%</div>
-    </div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+_has_afford_data = (base_npat != 0) or (deductions != 0) or (addbacks != 0)
 
-external_debt = col_bp + col_of
-debt_pct   = _pct(external_debt)
-own_pct    = _pct(col_own)
-gearing_ratio = (external_debt / col_own) if col_own else None
-g_label = None
-
-if grand > 0:
-    if own_pct >= 40:
-        g_color, g_label, g_note = "#16a34a", "CONSERVATIVE", "Strong equity contribution — well-capitalised structure."
-    elif own_pct >= 25:
-        g_color, g_label, g_note = "#f59e0b", "MODERATE", "Acceptable equity, but debt-weighted. Monitor serviceability."
-    elif own_pct >= 10:
-        g_color, g_label, g_note = "#e8610a", "AGGRESSIVE", "Thin equity buffer — highly geared. Scrutinise repayment capacity."
+if _has_afford_data:
+    if surplus > 0:
+        s_color, s_label = "#16a34a", "SURPLUS"
+    elif surplus < 0:
+        s_color, s_label = "#dc2626", "SHORTFALL"
     else:
-        g_color, g_label, g_note = "#dc2626", "HIGHLY GEARED", "Minimal owner contribution — significant risk concentration in debt."
+        s_color, s_label = "#f59e0b", "BREAK-EVEN"
+    cov_txt = f"{coverage:.2f}x" if coverage is not None else "n/a"
 
-    gr_txt = f"{gearing_ratio:.2f} : 1" if gearing_ratio is not None else "n/a (no own funds)"
     st.markdown(f"""
-    <div style="background:#f8f9fb;border:1px solid #dde1e8;border-left:3px solid {g_color};border-radius:0 4px 4px 0;padding:0.9rem 1.25rem;margin-top:0.6rem;">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.75rem;">
-        <div>
-          <span style="font-family:'IBM Plex Mono',monospace;font-size:0.62rem;letter-spacing:0.12em;color:#555e6e;text-transform:uppercase;">Debt : Equity Gearing</span>
-          <span style="font-family:'Playfair Display',serif;font-size:1.2rem;color:{g_color};font-weight:700;margin-left:0.5rem;">{gr_txt}</span>
-          <span style="background:{g_color};color:#fff;font-family:'IBM Plex Mono',monospace;font-size:0.6rem;font-weight:600;letter-spacing:0.1em;padding:0.15rem 0.6rem;border-radius:2px;margin-left:0.75rem;">{g_label}</span>
+    <div style="background:#f8f9fb;border:1px solid #dde1e8;border-top:2px solid #e8610a;border-radius:4px;padding:1.1rem 1.5rem;margin-top:0.75rem;">
+      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center;">
+        <div style="flex:1;min-width:120px;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.1em;color:#1d4ed8;text-transform:uppercase;">NPAT (Base)</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#111;font-weight:700;">{_fmt(base_npat)}</div>
         </div>
-        <div style="color:#555e6e;font-size:0.78rem;">Debt {debt_pct:.0f}% · Own Funds {own_pct:.0f}%</div>
+        <div style="flex:1;min-width:120px;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.1em;color:#16a34a;text-transform:uppercase;">+ Add-backs</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#111;font-weight:700;">{_fmt(addbacks)}</div>
+        </div>
+        <div style="flex:1;min-width:120px;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.1em;color:#dc2626;text-transform:uppercase;">− Deductions</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#111;font-weight:700;">{_fmt(deductions)}</div>
+        </div>
+        <div style="flex:1.5;min-width:180px;border-left:1px solid #dde1e8;padding-left:1.5rem;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.1em;color:#e8610a;text-transform:uppercase;">Surplus / (Shortfall)</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.35rem;color:{s_color};font-weight:700;">{_fmt(surplus)}
+            <span style="background:{s_color};color:#fff;font-family:'IBM Plex Mono',monospace;font-size:0.55rem;font-weight:600;letter-spacing:0.08em;padding:0.12rem 0.5rem;border-radius:2px;margin-left:0.4rem;vertical-align:middle;">{s_label}</span>
+          </div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#555e6e;margin-top:0.15rem;">Debt-service coverage: {cov_txt}</div>
+        </div>
       </div>
-      <div style="color:#1a1a1a;font-size:0.8rem;margin-top:0.4rem;">{g_note}</div>
     </div>
     """, unsafe_allow_html=True)
+else:
+    st.caption("Affordability not assessed — enter an NPAT figure and deductions above, or leave blank to skip.")
 
-st.session_state.saf_table = saf_edited
-st.session_state.saf_summary = {
-    "line_items": saf_display.to_dict(orient="records"),
-    "totals": {
-        "business_partners": col_bp,
-        "outside_finance": col_of,
-        "own_funds": col_own,
-        "grand_total": grand,
-    },
-    "funding_mix_pct": {
-        "business_partners": round(_pct(col_bp), 1),
-        "outside_finance": round(_pct(col_of), 1),
-        "own_funds": round(_pct(col_own), 1),
-    },
-    "gearing": {
-        "external_debt": external_debt,
-        "debt_pct": round(debt_pct, 1),
-        "own_funds_pct": round(own_pct, 1),
-        "debt_to_equity_ratio": round(gearing_ratio, 2) if gearing_ratio is not None else None,
-        "rating": g_label if grand > 0 else None,
-    },
+st.session_state.afford_summary = {
+    "line_items": _af.to_dict(orient="records"),
+    "npat_base": base_npat,
+    "add_backs": addbacks,
+    "deductions": deductions,
+    "cash_available_for_debt_service": available,
+    "surplus_or_shortfall": surplus,
+    "coverage_ratio": round(coverage, 2) if coverage is not None else None,
+    "verdict": (s_label if _has_afford_data else "Not assessed"),
+    "assessed": _has_afford_data,
 }
 
 st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
@@ -837,7 +791,7 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     submitted = st.form_submit_button("⚡  GENERATE DEAL ASSESSMENT", use_container_width=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# POST-SUBMIT — PHASE 1: build payload, draft evaluation criteria
+# POST-SUBMIT
 # ═══════════════════════════════════════════════════════════════════════════════
 if submitted:
     if not business_name:
@@ -885,6 +839,11 @@ if submitted:
     if years_in_business < 2:
         flags.append(("HIGH", "Business < 2 years old — limited track record"))
 
+    # Affordability shortfall flag
+    _afford = st.session_state.get("afford_summary", {})
+    if _afford.get("assessed") and _afford.get("surplus_or_shortfall", 0) < 0:
+        flags.append(("HIGH", "Affordability shortfall — NPAT (after add-backs) does not cover the proposed installment and royalty"))
+
     if flags:
         st.markdown("---")
         st.markdown("**🚩 Auto-detected Risk Flags**")
@@ -915,7 +874,7 @@ if submitted:
         "why_funding_best_option": why_funding_best,
         "total_funding_required": total_funding_required,
         "use_of_funds": fund_rows,
-        "sources_and_application_of_funds": st.session_state.get("saf_summary", {}),
+        "affordability": st.session_state.get("afford_summary", {}),
         "cost_benefit_commentary": cost_benefit,
         "revenue_streams": revenue_streams,
         "payment_terms": payment_terms,
@@ -967,128 +926,7 @@ if submitted:
         "analyst_preliminary_view": analyst_recommendation,
     }
 
-    # ── Persist for phase 2/3 and the PDF renderer ─────────────────────────────
-    st.session_state.deal_payload = payload
-    st.session_state.deal_flags = flags
-    st.session_state.deal_prompt_meta = {
-        "fy_period_1": fy_period_1, "fy_period_2": fy_period_2,
-        "mgt_label": _mgt_label, "mgt_months": mgt_months, "mgt_as_at": mgt_as_at,
-        "business_name": business_name,
-    }
-    st.session_state.deal_pdf_figures = {
-        "revenue_2024": revenue_2024, "revenue_2025": revenue_2025,
-        "ebitda_2024": ebitda_2024, "ebitda_2025": ebitda_2025,
-        "curr_assets_2024": curr_assets_2024, "curr_assets_2025": curr_assets_2025,
-        "curr_liab_2024": curr_liab_2024, "curr_liab_2025": curr_liab_2025,
-        "total_debt_2024": total_debt_2024, "total_debt_2025": total_debt_2025,
-        "equity_2024": equity_2024, "equity_2025": equity_2025,
-    }
-
-    try:
-        api_key = st.secrets["ANTHROPIC_API_KEY"]
-    except Exception:
-        import os
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-
-    if not api_key:
-        st.error("⚠️ ANTHROPIC_API_KEY not found in Streamlit secrets.")
-        st.stop()
-
-    with st.spinner("🤖 Drafting evaluation criteria — assessing industry, entrepreneur, viability and risk…"):
-        try:
-            client = Anthropic(api_key=api_key)
-            eval_prompt = f"""You are a senior South African credit analyst at Inland Fund. Based on the deal data below, draft an Evaluation Criteria assessment.
-
-DEAL DATA:
-{json.dumps(payload, indent=2, default=str)}
-
-For EACH of the following nine criteria, write a substantive "Details" narrative (1–2 paragraphs) and assign a risk rating of exactly "Low", "Average", or "High".
-
-Draw on real, accurate knowledge of the relevant South African market and industry context. For example, if the industry is student accommodation, discuss the actual dynamics of the SA student housing sector — NSFAS funding cycles, university enrolment demand, location dependency, vacancy risk, typical yields — and evaluate the perceived risk accordingly. Be specific and accurate, not generic. Where the data is thin, say what further information would be needed and rate conservatively.
-
-The nine criteria:
-1. "The industry" — the sector the business operates in, its structure, growth, cyclicality, and SA-specific risks.
-2. "Evaluation of the entrepreneur including commitment" — experience, track record, and skin in the game.
-3. "Financial risk vs business risk vs returns" — the balance of these three and whether returns justify the risk.
-4. "Financial viability" — profitability, cash flow, and ability to service the facility.
-5. "Technical viability" — whether the business model and operations are sound and deliverable.
-6. "Market penetration and turnover achievability" — realism of revenue/turnover assumptions given the market.
-7. "Deal structure and pricing" — soundness of the funding structure, gearing, and pricing.
-8. "Application vs profile of the entrepreneur and business" — fit between what's requested and who is requesting it.
-9. "Risk factors" — the overarching risks that could impair repayment.
-
-Return ONLY a strict JSON array, no markdown, no code fences, no preamble:
-[
-  {{"criterion": "The industry", "details": "...", "rating": "Low|Average|High"}}
-]"""
-
-            resp = client.messages.create(
-                model="claude-sonnet-4-5",
-                max_tokens=3500,
-                messages=[{"role": "user", "content": eval_prompt}],
-            )
-            raw = "".join(b.text for b in resp.content if hasattr(b, "text"))
-            raw = raw.replace("```json", "").replace("```", "").strip()
-            eval_rows = json.loads(raw)
-            st.session_state.eval_matrix = pd.DataFrame(eval_rows)
-            st.session_state.eval_stage = "review"
-        except Exception as e:
-            st.warning(f"Could not auto-draft evaluation criteria ({e}). A blank matrix will be used — you can fill it in.")
-            st.session_state.eval_matrix = pd.DataFrame(
-                [{"criterion": c, "details": "", "rating": "Average"} for c in [
-                    "The industry", "Evaluation of the entrepreneur including commitment",
-                    "Financial risk vs business risk vs returns", "Financial viability",
-                    "Technical viability", "Market penetration and turnover achievability",
-                    "Deal structure and pricing", "Application vs profile of the entrepreneur and business",
-                    "Risk factors"]])
-            st.session_state.eval_stage = "review"
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 2 — REVIEW & EDIT EVALUATION MATRIX
-# ═══════════════════════════════════════════════════════════════════════════════
-if st.session_state.get("eval_stage") == "review" and not _is_client:
-    st.markdown("---")
-    st.markdown('<div class="section-label">📝 Evaluation Criteria — Review & Edit Before Generating</div>', unsafe_allow_html=True)
-    st.markdown('<div class="helper-tip">✅ The AI has drafted an assessment for each criterion below, drawing on real industry and market context. Review the narratives and ratings, edit anything you disagree with, then generate the final report — your edits are woven into the relevant sections.</div>', unsafe_allow_html=True)
-
-    edited_eval = st.data_editor(
-        st.session_state.eval_matrix,
-        use_container_width=True,
-        num_rows="dynamic",
-        key="eval_editor",
-        column_config={
-            "criterion": st.column_config.TextColumn("Criteria", width="medium"),
-            "details":   st.column_config.TextColumn("Details (AI-drafted — editable)", width="large"),
-            "rating":    st.column_config.SelectboxColumn("Risk Rating", options=["Low", "Average", "High"], width="small"),
-        },
-    )
-    st.session_state.eval_matrix = edited_eval
-
-    if st.button("✅  Generate Final Assessment", use_container_width=True, key="gen_final_btn"):
-        st.session_state.eval_final = edited_eval.to_dict(orient="records")
-        st.session_state.eval_stage = "generate"
-        st.rerun()
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 3 — GENERATE FULL REPORT (weaving in evaluation criteria)
-# ═══════════════════════════════════════════════════════════════════════════════
-_run_generation = st.session_state.get("eval_stage") == "generate"
-if _is_client and st.session_state.get("eval_stage") == "review":
-    st.session_state.eval_final = st.session_state.eval_matrix.to_dict(orient="records")
-    st.session_state.eval_stage = "generate"
-    _run_generation = True
-
-if _run_generation:
-    payload = dict(st.session_state.deal_payload)
-    meta = st.session_state.deal_prompt_meta
-    flags = st.session_state.get("deal_flags", [])
-    figs = st.session_state.get("deal_pdf_figures", {})
-    business_name = meta["business_name"]
-    fy_period_1, fy_period_2 = meta["fy_period_1"], meta["fy_period_2"]
-    _mgt_label, mgt_months, mgt_as_at = meta["mgt_label"], meta["mgt_months"], meta["mgt_as_at"]
-    evaluation_criteria = st.session_state.get("eval_final", [])
-    payload["evaluation_criteria"] = evaluation_criteria
-
+    # ── Claude generation ──────────────────────────────────────────────────────
     st.markdown("---")
     st.markdown('<div class="section-label">📄 Generating Deal Fact Sheet Assessment…</div>', unsafe_allow_html=True)
 
@@ -1104,7 +942,6 @@ RULES:
 - Calculate and present ratios in tables with benchmark comparisons.
 - Identify trends across the two selected financial years and the latest management accounts (note the management accounts may cover only part of a year — treat them accordingly).
 - Flag anomalies, inconsistencies, and items requiring further due diligence.
-- You are given a set of analyst-reviewed EVALUATION CRITERIA (industry, entrepreneur, viability, etc.) each with a narrative and a Low/Average/High rating. Weave each one into the most relevant section — the industry narrative into Business Overview, the entrepreneur evaluation into Entrepreneur Profiles, financial viability into Financial Analysis, deal structure into the funding section, and so on. Preserve the analyst's rating for each. Also include a consolidated Evaluation Criteria summary table near the end.
 - Use Markdown formatting: ## for sections, ### for sub-sections, bold for key figures, tables where applicable."""
 
     user_prompt = f"""Generate a complete Deal Fact Sheet Assessment for Inland Fund based on the following data. Cover every section.
@@ -1120,41 +957,29 @@ Date: {payload['deal_date']} | Prepared by: Inland Fund Investment Team | Status
 ---
 
 ## 1. BUSINESS OVERVIEW
-Summarise the business: entity type, establishment date, years trading, BEE status, compliance, what makes it unique. Describe the shareholder and group structure clearly. WEAVE IN the "The industry" evaluation criterion here — provide the 1–2 paragraph industry context and its Low/Average/High rating.
+Summarise the business: entity type, establishment date, years trading, BEE status, compliance, what makes it unique. Describe the shareholder and group structure clearly.
 
 ## 2. ENTREPRENEUR PROFILES
-Present each entrepreneur in a table (Name | Role | Qualifications | Experience). Assess key-person risk and succession planning quality. WEAVE IN the "Evaluation of the entrepreneur including commitment" and "Application vs profile of the entrepreneur and business" criteria here, with their ratings.
+Present each entrepreneur in a table (Name | Role | Qualifications | Experience). Assess key-person risk and succession planning quality.
 
 ## 3. PURPOSE OF FUNDING & USE OF FUNDS
 State the funding background and rationale. Present the use of funds as a table:
 | Line Item | Amount (ZAR) | % of Total | Funded By |
 Comment on appropriateness, cost-benefit, and whether the entrepreneur contribution is adequate. Note professional/legal fees and raising fee accuracy.
 
-## 3A. SOURCES & APPLICATION OF FUNDS / GEARING ANALYSIS
-Using the "sources_and_application_of_funds" data, present the funding structure as a table showing each line item split across the three sources:
-| Application (Line Item) | Business Partners (R) | Outside Finance (R) | Own Funds (R) | Total (R) |
-Add a totals row and a funding-mix percentage row (each source as % of grand total).
-
-Then analyse the gearing and financial structure:
-- State the debt-to-equity gearing ratio and what it means for this deal.
-- Assess whether the entrepreneur's Own Funds contribution is adequate (benchmark: 25%+ is reasonable, 40%+ is conservative/strong, below 10% is highly geared and higher risk).
-- Comment on how the addition of the new facility (Business Partners) reshapes the balance sheet and overall gearing.
-- Flag any concern where the structure is debt-heavy or the owner has minimal skin in the game.
-- WEAVE IN the "Deal structure and pricing" criterion here, with its rating.
-
 ## 4. REVENUE MODEL ANALYSIS
-Describe each revenue stream, payment terms, and margin profile. Comment on revenue diversification and whether the model is sustainable. Note any seasonality risk. WEAVE IN the "Market penetration and turnover achievability" and "Technical viability" criteria here, with their ratings.
+Describe each revenue stream, payment terms, and margin profile. Comment on revenue diversification and whether the model is sustainable. Note any seasonality risk.
 
 ## 5. FINANCIAL ANALYSIS
 
 ### 5.1 Income Statement Summary
-Present a 3-period comparative table using the ACTUAL period labels (Period 1 = {fy_period_1}, Period 2 = {fy_period_2}, and "{_mgt_label}" for the management accounts column):
+Present a 3-period comparative table using the ACTUAL period labels from the data (Period 1 = {fy_period_1}, Period 2 = {fy_period_2}, and "{_mgt_label}" for the management accounts column):
 | Metric | {fy_period_1} | {fy_period_2} | {_mgt_label} | Trend |
 Include: Revenue, Gross Profit, GP Margin %, EBITDA, Net Profit, NP Margin %
 
-IMPORTANT: The management accounts cover {mgt_months} only (as at {mgt_as_at}), so do NOT compare them like-for-like against the full financial years. Contextualise appropriately (pro-rata run-rate).
+IMPORTANT: The management accounts cover {mgt_months} only (as at {mgt_as_at}), so do NOT compare them like-for-like against the full financial years. When commenting, annualise or contextualise the management-account figures appropriately (e.g. note that {mgt_months} of trading is tracking ahead of / behind the prior full year on a pro-rata basis).
 
-Trend analysis: highlight growth rates between {fy_period_1} and {fy_period_2}, margin compression/expansion, and any anomalies. WEAVE IN the "Financial viability" and "Financial risk vs business risk vs returns" criteria here, with their ratings.
+Trend analysis: highlight growth rates between {fy_period_1} and {fy_period_2}, margin compression/expansion, and any anomalies. Note items requiring further DD.
 
 ### 5.2 Balance Sheet & Ratio Analysis
 Present calculated ratios across all periods using the same labels:
@@ -1163,37 +988,43 @@ Include: Current Ratio (≥1.5), Debt/Equity (≤2.0x)
 
 Comment on balance sheet trends and flag anomalies.
 
+### 5.3 Affordability Assessment
+Using the "affordability" data, assess whether the business can service the proposed facility from current earnings.
+First present the calculation as a table exactly reflecting the line items and their treatment (NPAT base, add-backs, deductions):
+| Item | Treatment | Amount (R) |
+Then present the summary calculation clearly:
+- Net Profit After Tax (NPAT), latest period
+- Add: any add-backs (non-cash / non-recurring items)
+- = Cash available for debt service
+- Less: Loan installment, royalty and any other deductions
+- = **Surplus / (Shortfall)**
+State the surplus or shortfall figure explicitly and the debt-service coverage ratio (coverage_ratio). Interpret it: a surplus with coverage comfortably above 1.0x indicates the facility is affordable; a shortfall (coverage below 1.0x) is a serious concern requiring restructuring or decline. If the affordability data was not provided (i.e. "assessed" is false or all figures are zero), state clearly that an affordability assessment was not completed and must be obtained before credit committee sign-off.
+
 ## 6. BANK STATEMENT ANALYSIS
-Summarise findings: monthly credit average vs declared revenue, RDs noted, overdraft usage, unusual transactions, cash flow consistency. Give an overall bank statement health rating.
+Summarise findings: monthly credit average vs declared revenue, RDs noted (frequency, severity), overdraft usage, unusual transactions, cash flow consistency. Give an overall bank statement health rating.
 
 ## 7. GROUP STRUCTURE
 Describe related entities, cross-guarantees, and inter-company exposure. Assess the financial gearing of the group overall. Note if group statements are outstanding.
 
 ## 8. CREDIT & BACKGROUND CHECK FINDINGS
-Summarise entrepreneur and business credit results. Highlight any adverse findings and their materiality.
+Summarise entrepreneur and business credit results. Highlight any adverse findings and their materiality to this application.
 
-## 9. EVALUATION CRITERIA SUMMARY
-Present the full analyst-reviewed evaluation matrix as a consolidated table:
-| Criteria | Assessment Summary | Risk Rating |
-Use a concise one-line summary per criterion (detail is woven above) and the Low/Average/High rating. WEAVE IN the "Risk factors" criterion narrative just before or after this table.
-
-## 10. RISK MATRIX
+## 9. RISK MATRIX
 Present all identified risks (auto-flagged + your own analysis) in a structured table:
 | # | Risk Factor | Severity | Probability | Mitigant / Required Action |
 
-## 11. OUTSTANDING QUERIES & FURTHER DUE DILIGENCE REQUIRED
+## 10. OUTSTANDING QUERIES & FURTHER DUE DILIGENCE REQUIRED
 List every open item that must be resolved before credit committee sign-off. Format as a numbered checklist.
 
-## 12. ANALYST ASSESSMENT & RECOMMENDATION
-State the analyst's preliminary view clearly. Provide a concise 4–6 sentence rationale covering: business quality, financial strength, deal structure, security, and key risks. If recommending approval, suggest deal terms (amount, tenor, rate basis, security required)."""
+## 11. ANALYST ASSESSMENT & RECOMMENDATION
+State the analyst's preliminary view clearly. Provide a concise 4–6 sentence rationale covering: business quality, financial strength, deal structure, affordability, security, and key risks. If recommending approval, suggest deal terms (amount, tenor, rate basis, security required)."""
 
+    # ── Load API key ──────────────────────────────────────────────────────────
     try:
         api_key = st.secrets["ANTHROPIC_API_KEY"]
     except Exception:
-        import os
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
         st.error("⚠️ ANTHROPIC_API_KEY not found in Streamlit secrets.")
+        st.info("Add it under App Settings → Secrets:\nANTHROPIC_API_KEY = \"sk-ant-...\"")
         st.stop()
 
     client = Anthropic(api_key=api_key)
@@ -1203,7 +1034,7 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
     try:
         with client.messages.stream(
             model="claude-sonnet-4-5",
-            max_tokens=6000,
+            max_tokens=4500,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         ) as stream:
@@ -1219,6 +1050,7 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
             unsafe_allow_html=True
         )
 
+        # ── For clients: clear the output display (they should not see the memo)
         if _is_client:
             output_placeholder.empty()
 
@@ -1234,12 +1066,12 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
                         flags=flags,
                         fy_period_1=fy_period_1,
                         fy_period_2=fy_period_2,
-                        revenue_2024=figs.get("revenue_2024", 0), revenue_2025=figs.get("revenue_2025", 0),
-                        ebitda_2024=figs.get("ebitda_2024", 0), ebitda_2025=figs.get("ebitda_2025", 0),
-                        curr_assets_2024=figs.get("curr_assets_2024", 0), curr_assets_2025=figs.get("curr_assets_2025", 0),
-                        curr_liab_2024=figs.get("curr_liab_2024", 0), curr_liab_2025=figs.get("curr_liab_2025", 0),
-                        total_debt_2024=figs.get("total_debt_2024", 0), total_debt_2025=figs.get("total_debt_2025", 0),
-                        equity_2024=figs.get("equity_2024", 0), equity_2025=figs.get("equity_2025", 0),
+                        revenue_2024=revenue_2024, revenue_2025=revenue_2025,
+                        ebitda_2024=ebitda_2024, ebitda_2025=ebitda_2025,
+                        curr_assets_2024=curr_assets_2024, curr_assets_2025=curr_assets_2025,
+                        curr_liab_2024=curr_liab_2024, curr_liab_2025=curr_liab_2025,
+                        total_debt_2024=total_debt_2024, total_debt_2025=total_debt_2025,
+                        equity_2024=equity_2024, equity_2025=equity_2025,
                         output_path=pdf_path,
                     )
                     with open(pdf_path, "rb") as f:
@@ -1253,7 +1085,7 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
         if email_sent:
             st.success("✅ Assessment emailed to the Inland Fund team inbox.")
 
-        # ── Download buttons — multiple formats ───────────────────────────────
+        # ── Download buttons — multiple formats (team only) ───────────────────
         if not _is_client:
             st.markdown("**Download Assessment:**")
             dl1, dl2, dl3, dl4 = st.columns(4)
@@ -1321,12 +1153,7 @@ tr:nth-child(even) td{{background:#f8f9fb}}
 
             st.caption("💡 Tip: The .html file gives the best view and can be printed to PDF from your browser (File → Print → Save as PDF)")
 
-            if st.button("🔄  Start a New Assessment", key="reset_stage"):
-                for k in ("eval_stage", "eval_matrix", "eval_final", "deal_payload",
-                          "deal_prompt_meta", "deal_flags", "deal_pdf_figures"):
-                    st.session_state.pop(k, None)
-                st.rerun()
-
+        # ── Client thank-you (shown when accessed via token URL) ──────────────
         if _is_client:
             st.markdown("""
             <div style="background:#f0fdf4; border:1px solid #86efac; border-top:3px solid #16a34a;
