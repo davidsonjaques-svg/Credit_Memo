@@ -31,29 +31,29 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
 
 :root {
-    --orange:      #e8610a;
-    --orange-lt:   #f97316;
-    --blue:        #1d4ed8;
-    --black:       #111111;
-    --text:        #1a1a1a;
-    --muted:       #555e6e;
-    --bg:          #ffffff;
-    --bg-soft:     #f8f9fb;
-    --border:      #dde1e8;
-    --border-dark: #c4cad4;
+    --navy:        #0a1628;
+    --navy2:       #111e33;
+    --navy3:       #0d1a2e;
+    --gold:        #c9a84c;
+    --gold2:       #e8c97a;
+    --cream:       #f5f0e8;
+    --text:        #f5f0e8;
+    --muted:       #8a9ab5;
+    --bg:          #0a1628;
+    --border:      #1e3050;
 }
 html, body, [data-testid="stAppViewContainer"] {
-    background: #ffffff !important;
-    color: #1a1a1a !important;
+    background: #0a1628 !important;
+    color: #f5f0e8 !important;
     font-family: 'IBM Plex Sans', sans-serif !important;
 }
 [data-testid="stHeader"]  { background: transparent !important; }
-[data-testid="stSidebar"] { background: #f1f3f7 !important; border-right: 1px solid #dde1e8 !important; }
+[data-testid="stSidebar"] { background: #0a1420 !important; border-right: 1px solid #1e3050 !important; }
 h1, h2, h3 { font-family: 'Playfair Display', serif !important; }
 .hero {
-    background: linear-gradient(135deg, #fff7f2 0%, #fff 60%);
-    border: 1px solid #fcd9c4;
-    border-top: 4px solid #e8610a;
+    background: linear-gradient(135deg, #0f2040 0%, #162540 60%, #0d1e35 100%);
+    border: 1px solid #1e3050;
+    border-top: 4px solid #c9a84c;
     border-radius: 6px;
     padding: 2.5rem 3rem 2rem;
     margin-bottom: 2rem;
@@ -64,45 +64,45 @@ h1, h2, h3 { font-family: 'Playfair Display', serif !important; }
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.7rem;
     letter-spacing: 0.25em;
-    color: #e8610a;
+    color: #c9a84c;
     text-transform: uppercase;
     margin-bottom: 0.5rem;
 }
-.hero h1 { font-size: 2.2rem; font-weight: 900; color: #e8610a; margin: 0 0 0.4rem; line-height: 1.15; }
-.hero-sub { color: #555e6e; font-size: 0.95rem; font-weight: 300; }
+.hero h1 { font-size: 2.2rem; font-weight: 900; color: #f5f0e8; margin: 0 0 0.4rem; line-height: 1.15; }
+.hero-sub { color: #8a9ab5; font-size: 0.95rem; font-weight: 300; }
 .section-label {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.68rem;
     letter-spacing: 0.2em;
-    color: #e8610a;
+    color: #c9a84c;
     text-transform: uppercase;
     font-weight: 600;
     margin: 1.75rem 0 0.75rem;
     padding-bottom: 0.4rem;
-    border-bottom: 2px solid #e8610a;
+    border-bottom: 2px solid #c9a84c;
 }
 [data-testid="stTextInput"] input,
 [data-testid="stTextArea"] textarea,
 [data-testid="stNumberInput"] input,
 [data-testid="stSelectbox"] > div {
-    background: #ffffff !important;
-    border: 1px solid #c4cad4 !important;
+    background: #0d1a2e !important;
+    border: 1px solid #1e3050 !important;
     border-radius: 4px !important;
-    color: #111111 !important;
+    color: #f5f0e8 !important;
     font-family: 'IBM Plex Sans', sans-serif !important;
     font-size: 0.9rem !important;
 }
 [data-testid="stTextInput"] input:focus,
 [data-testid="stTextArea"] textarea:focus,
 [data-testid="stNumberInput"] input:focus {
-    border-color: #1d4ed8 !important;
-    box-shadow: 0 0 0 2px rgba(29,78,216,0.12) !important;
+    border-color: #c9a84c !important;
+    box-shadow: 0 0 0 2px rgba(201,168,76,0.18) !important;
 }
-label, .stLabel { color: #1d4ed8 !important; font-size: 0.83rem !important; font-weight: 500 !important; }
+label, .stLabel { color: #cbd5e6 !important; font-size: 0.83rem !important; font-weight: 500 !important; }
 [data-testid="stFormSubmitButton"] button,
 .stButton button {
-    background: linear-gradient(135deg, #e8610a, #f97316) !important;
-    color: #ffffff !important;
+    background: linear-gradient(135deg, #c9a84c, #e8c97a) !important;
+    color: #0a1628 !important;
     font-family: 'IBM Plex Mono', monospace !important;
     font-weight: 600 !important;
     font-size: 0.85rem !important;
@@ -121,78 +121,78 @@ label, .stLabel { color: #1d4ed8 !important; font-size: 0.83rem !important; font
     letter-spacing: 0.1em;
     padding: 0.3rem 0.9rem;
     border-radius: 3px;
-    border: 1px solid #c4cad4;
-    color: #555e6e;
+    border: 1px solid #1e3050;
+    color: #8a9ab5;
     text-transform: uppercase;
-    background: #f8f9fb;
+    background: #0d1a2e;
 }
-.step.active { background: #fff4ee; border-color: #e8610a; color: #e8610a; font-weight: 600; }
-.step.done   { background: #f0fdf4; border-color: #86efac; color: #16a34a; }
+.step.active { background: #16223b; border-color: #c9a84c; color: #c9a84c; font-weight: 600; }
+.step.done   { background: #0f2a1c; border-color: #16a34a; color: #22c55e; }
 .helper-tip {
-    background: #eff6ff;
-    border-left: 3px solid #1d4ed8;
+    background: #111e33;
+    border-left: 3px solid #c9a84c;
     border-radius: 0 4px 4px 0;
     padding: 0.6rem 1rem;
     font-size: 0.82rem;
-    color: #1d4ed8;
+    color: #b8c8de;
     margin-bottom: 1rem;
 }
-.gold-divider { border: none; border-top: 1px solid #dde1e8; margin: 2rem 0; position: relative; }
+.gold-divider { border: none; border-top: 1px solid #1e3050; margin: 2rem 0; position: relative; }
 .gold-divider::after {
     content: '◆';
     position: absolute;
     left: 50%; top: -0.6rem;
     transform: translateX(-50%);
-    color: #e8610a;
+    color: #c9a84c;
     font-size: 0.7rem;
-    background: #ffffff;
+    background: #0a1628;
     padding: 0 0.5rem;
 }
 .output-container {
-    background: #ffffff;
-    border: 1px solid #dde1e8;
-    border-top: 3px solid #e8610a;
+    background: #111e33;
+    border: 1px solid #1e3050;
+    border-top: 3px solid #c9a84c;
     border-radius: 6px;
     padding: 2.5rem 3rem;
     font-family: 'IBM Plex Sans', sans-serif;
     line-height: 1.8;
-    color: #1a1a1a;
+    color: #e6ecf5;
 }
-.output-container h1 { color: #e8610a; font-size: 1.6rem; margin-bottom: 0.25rem; }
+.output-container h1 { color: #c9a84c; font-size: 1.6rem; margin-bottom: 0.25rem; }
 .output-container h2 {
-    color: #e8610a;
+    color: #c9a84c;
     font-size: 1rem;
     font-family: 'IBM Plex Mono', monospace !important;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     margin-top: 2rem; margin-bottom: 0.75rem;
     padding-bottom: 0.3rem;
-    border-bottom: 2px solid #e8610a;
+    border-bottom: 2px solid #c9a84c;
 }
-.output-container h3 { color: #1d4ed8; font-size: 0.97rem; margin: 1rem 0 0.3rem; }
-.output-container strong { color: #111111; }
+.output-container h3 { color: #e8c97a; font-size: 0.97rem; margin: 1rem 0 0.3rem; }
+.output-container strong { color: #ffffff; }
 .output-container table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.88rem; }
 .output-container th {
-    background: #fff4ee;
-    color: #e8610a;
+    background: #16223b;
+    color: #c9a84c;
     padding: 0.5rem 0.8rem;
     text-align: left;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.7rem;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    border: 1px solid #fcd9c4;
+    border: 1px solid #1e3050;
 }
-.output-container td { padding: 0.45rem 0.8rem; border: 1px solid #dde1e8; color: #1a1a1a; }
-.output-container tr:nth-child(even) td { background: #f8f9fb; }
+.output-container td { padding: 0.45rem 0.8rem; border: 1px solid #1e3050; color: #e6ecf5; }
+.output-container tr:nth-child(even) td { background: #0d1a2e; }
 .output-container ul { padding-left: 1.4rem; }
-.output-container li { margin-bottom: 0.35rem; color: #1a1a1a; }
+.output-container li { margin-bottom: 0.35rem; color: #e6ecf5; }
 .output-container blockquote {
-    border-left: 3px solid #1d4ed8;
+    border-left: 3px solid #c9a84c;
     margin: 0.5rem 0;
     padding: 0.4rem 1rem;
-    color: #555e6e;
-    background: #eff6ff;
+    color: #b8c8de;
+    background: #16223b;
     border-radius: 0 4px 4px 0;
     font-style: italic;
 }
@@ -328,19 +328,19 @@ Base everything strictly on what is actually in the statements. Do not invent fi
 if st.session_state.bank_analysis:
     ba = st.session_state.bank_analysis
     st.markdown(f"""
-    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-left:3px solid #1d4ed8;
+    <div style="background:#111e33; border:1px solid #1e3050; border-left:3px solid #c9a84c;
                 border-radius:0 4px 4px 0; padding:1rem 1.25rem; margin:0.5rem 0 1.5rem;">
         <div style="font-family:'IBM Plex Mono',monospace; font-size:0.62rem; letter-spacing:0.15em;
-                    color:#1d4ed8; text-transform:uppercase; margin-bottom:0.5rem;">
+                    color:#c9a84c; text-transform:uppercase; margin-bottom:0.5rem;">
             🤖 AI Analysis Result
         </div>
-        <div style="color:#1a1a1a; font-size:0.85rem; line-height:1.6;">
-            <strong>Months:</strong> {ba.get('months_reviewed','—')} &nbsp;|&nbsp;
-            <strong>Avg Monthly Credits:</strong> R {ba.get('avg_monthly_credits',0):,.0f} &nbsp;|&nbsp;
-            <strong>Returned Debits:</strong> {ba.get('rd_count','—')} &nbsp;|&nbsp;
-            <strong>Overdraft:</strong> {ba.get('overdraft_detected','—')}
+        <div style="color:#e6ecf5; font-size:0.85rem; line-height:1.6;">
+            <strong style="color:#ffffff;">Months:</strong> {ba.get('months_reviewed','—')} &nbsp;|&nbsp;
+            <strong style="color:#ffffff;">Avg Monthly Credits:</strong> R {ba.get('avg_monthly_credits',0):,.0f} &nbsp;|&nbsp;
+            <strong style="color:#ffffff;">Returned Debits:</strong> {ba.get('rd_count','—')} &nbsp;|&nbsp;
+            <strong style="color:#ffffff;">Overdraft:</strong> {ba.get('overdraft_detected','—')}
         </div>
-        <div style="color:#555; font-size:0.78rem; margin-top:0.5rem; font-style:italic;">
+        <div style="color:#8a9ab5; font-size:0.78rem; margin-top:0.5rem; font-style:italic;">
             {ba.get('confidence_note','')}
         </div>
     </div>
@@ -402,20 +402,20 @@ if extract_fin_clicked:
 _fe = st.session_state.get("financial_extraction") or {}
 if _fe:
     st.markdown(f"""
-    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-left:3px solid #1d4ed8;
+    <div style="background:#111e33; border:1px solid #1e3050; border-left:3px solid #c9a84c;
                 border-radius:0 4px 4px 0; padding:1rem 1.25rem; margin:0.5rem 0 1.5rem;">
         <div style="font-family:'IBM Plex Mono',monospace; font-size:0.62rem; letter-spacing:0.15em;
-                    color:#1d4ed8; text-transform:uppercase; margin-bottom:0.5rem;">
+                    color:#c9a84c; text-transform:uppercase; margin-bottom:0.5rem;">
             🤖 AI Extraction Result — {_fe.get('company_name','')}
         </div>
-        <div style="color:#1a1a1a; font-size:0.85rem; line-height:1.6;">
-            <strong>Periods found:</strong> {', '.join(_fe.get('periods', [])) or '—'} &nbsp;|&nbsp;
-            <strong>Most recent revenue:</strong> R {_fe.get('revenue_p2', 0):,.0f}
+        <div style="color:#e6ecf5; font-size:0.85rem; line-height:1.6;">
+            <strong style="color:#ffffff;">Periods found:</strong> {', '.join(_fe.get('periods', [])) or '—'} &nbsp;|&nbsp;
+            <strong style="color:#ffffff;">Most recent revenue:</strong> R {_fe.get('revenue_p2', 0):,.0f}
         </div>
-        <div style="color:#555; font-size:0.78rem; margin-top:0.5rem; font-style:italic;">
+        <div style="color:#8a9ab5; font-size:0.78rem; margin-top:0.5rem; font-style:italic;">
             {_fe.get('extraction_notes','')}
         </div>
-        <div style="color:#b45309; font-size:0.75rem; margin-top:0.5rem;">
+        <div style="color:#e8c97a; font-size:0.75rem; margin-top:0.5rem;">
             ⚠️ Confirm the FY dropdowns below (Period 1 / Period 2) actually match these extracted periods before submitting.
         </div>
     </div>
@@ -489,26 +489,26 @@ if _has_afford_data:
     cov_txt = f"{coverage:.2f}x" if coverage is not None else "n/a"
 
     st.markdown(f"""
-    <div style="background:#f8f9fb;border:1px solid #dde1e8;border-top:2px solid #e8610a;border-radius:4px;padding:1.1rem 1.5rem;margin-top:0.75rem;">
+    <div style="background:#0a1628;border:1px solid #1e3050;border-top:2px solid #c9a84c;border-radius:4px;padding:1.1rem 1.5rem;margin-top:0.75rem;">
       <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center;">
         <div style="flex:1;min-width:120px;">
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.1em;color:#1d4ed8;text-transform:uppercase;">NPAT (Base)</div>
-          <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#111;font-weight:700;">{_fmt(base_npat)}</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.1em;color:#8a9ab5;text-transform:uppercase;">NPAT (Base)</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#f5f0e8;font-weight:700;">{_fmt(base_npat)}</div>
         </div>
         <div style="flex:1;min-width:120px;">
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.1em;color:#16a34a;text-transform:uppercase;">+ Add-backs</div>
-          <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#111;font-weight:700;">{_fmt(addbacks)}</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.1em;color:#22c55e;text-transform:uppercase;">+ Add-backs</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#f5f0e8;font-weight:700;">{_fmt(addbacks)}</div>
         </div>
         <div style="flex:1;min-width:120px;">
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.1em;color:#dc2626;text-transform:uppercase;">− Deductions</div>
-          <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#111;font-weight:700;">{_fmt(deductions)}</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.1em;color:#f87171;text-transform:uppercase;">− Deductions</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#f5f0e8;font-weight:700;">{_fmt(deductions)}</div>
         </div>
-        <div style="flex:1.5;min-width:180px;border-left:1px solid #dde1e8;padding-left:1.5rem;">
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.1em;color:#e8610a;text-transform:uppercase;">Surplus / (Shortfall)</div>
+        <div style="flex:1.5;min-width:180px;border-left:1px solid #1e3050;padding-left:1.5rem;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.1em;color:#c9a84c;text-transform:uppercase;">Surplus / (Shortfall)</div>
           <div style="font-family:'Playfair Display',serif;font-size:1.35rem;color:{s_color};font-weight:700;">{_fmt(surplus)}
             <span style="background:{s_color};color:#fff;font-family:'IBM Plex Mono',monospace;font-size:0.55rem;font-weight:600;letter-spacing:0.08em;padding:0.12rem 0.5rem;border-radius:2px;margin-left:0.4rem;vertical-align:middle;">{s_label}</span>
           </div>
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#555e6e;margin-top:0.15rem;">Debt-service coverage: {cov_txt}</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#8a9ab5;margin-top:0.15rem;">Debt-service coverage: {cov_txt}</div>
         </div>
       </div>
     </div>
@@ -651,13 +651,13 @@ with st.form("fact_sheet_form", clear_on_submit=False):
 
     st.markdown("**Income Statement**")
     c0, c1, c2, c3 = st.columns([2,2,2,2])
-    c0.markdown("<div style='padding-top:0.55rem;font-style:italic;color:#1d4ed8;font-weight:500;'>Line Item</div>", unsafe_allow_html=True)
+    c0.markdown("<div style='padding-top:0.55rem;font-style:italic;color:#e8c97a;font-weight:500;'>Line Item</div>", unsafe_allow_html=True)
     fy_period_1 = c1.selectbox("Period 1", _fy_options, index=_fy_options.index("FY2024"),
                                label_visibility="collapsed", key="fy_p1")
     fy_period_2 = c2.selectbox("Period 2", _fy_options, index=_fy_options.index("FY2025"),
                                label_visibility="collapsed", key="fy_p2")
     _mgt_label = f"Mgt Accs ({mgt_months})"
-    c3.markdown(f"<div style='padding-top:0.55rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
+    c3.markdown(f"<div style='padding-top:0.55rem;font-style:italic;color:#e8c97a;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
 
     revenue_2024 = c1.number_input("Revenue P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("revenue_p1", 0.0))
     revenue_2025    = c2.number_input("Revenue P2",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("revenue_p2", 0.0))
@@ -689,10 +689,10 @@ with st.form("fact_sheet_form", clear_on_submit=False):
 
     st.markdown("**Balance Sheet Inputs**")
     c0, c1, c2, c3 = st.columns([2,2,2,2])
-    c0.markdown("<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>Line Item</div>", unsafe_allow_html=True)
-    c1.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{fy_period_1}</div>", unsafe_allow_html=True)
-    c2.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{fy_period_2}</div>", unsafe_allow_html=True)
-    c3.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
+    c0.markdown("<div style='padding-top:0.15rem;font-style:italic;color:#e8c97a;font-weight:500;'>Line Item</div>", unsafe_allow_html=True)
+    c1.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#e8c97a;font-weight:500;'>{fy_period_1}</div>", unsafe_allow_html=True)
+    c2.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#e8c97a;font-weight:500;'>{fy_period_2}</div>", unsafe_allow_html=True)
+    c3.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#e8c97a;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
 
     curr_assets_2024  = c1.number_input("CA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ca_p1", 0.0))
     curr_assets_2025  = c2.number_input("CA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ca_p2", 0.0))
@@ -1113,20 +1113,20 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
 <title>Inland Fund — {business_name}</title>
 <style>
 body{{font-family:Arial,sans-serif;max-width:900px;margin:3rem auto;padding:2rem;color:#1a1a1a;line-height:1.7}}
-h1{{color:#e8610a;border-bottom:3px solid #e8610a;padding-bottom:0.5rem}}
-h2{{color:#e8610a;border-bottom:2px solid #e8610a;padding-bottom:0.3rem;font-size:1rem;letter-spacing:0.1em;text-transform:uppercase;margin-top:2rem}}
-h3{{color:#1d4ed8}}
+h1{{color:#0a1628;border-bottom:3px solid #c9a84c;padding-bottom:0.5rem}}
+h2{{color:#0a1628;border-bottom:2px solid #c9a84c;padding-bottom:0.3rem;font-size:1rem;letter-spacing:0.1em;text-transform:uppercase;margin-top:2rem}}
+h3{{color:#8a6d1b}}
 table{{width:100%;border-collapse:collapse;margin:1rem 0}}
-th{{background:#fff4ee;color:#e8610a;padding:0.5rem 0.8rem;text-align:left;border:1px solid #fcd9c4;font-size:0.85rem}}
+th{{background:#0a1628;color:#c9a84c;padding:0.5rem 0.8rem;text-align:left;border:1px solid #1e3050;font-size:0.85rem}}
 td{{padding:0.45rem 0.8rem;border:1px solid #dde1e8}}
-tr:nth-child(even) td{{background:#f8f9fb}}
-.hdr{{background:#fff7f2;border-top:4px solid #e8610a;padding:1.5rem 2rem;margin-bottom:2rem;border-radius:4px}}
+tr:nth-child(even) td{{background:#f6f4ef}}
+.hdr{{background:#0a1628;border-top:4px solid #c9a84c;padding:1.5rem 2rem;margin-bottom:2rem;border-radius:4px}}
 .ftr{{color:#aaa;font-size:0.75rem;text-align:center;border-top:1px solid #ddd;margin-top:3rem;padding-top:1rem}}
 </style></head><body>
 <div class="hdr">
-<p style="color:#e8610a;font-size:0.7rem;letter-spacing:0.2em;text-transform:uppercase;margin:0 0 0.3rem">Inland Fund · Deal Fact Sheet</p>
-<h1 style="margin:0 0 0.25rem;font-size:1.6rem">{business_name}</h1>
-<p style="color:#555;font-size:0.85rem;margin:0">Generated: {datetime.today().strftime('%d %B %Y at %H:%M')}</p>
+<p style="color:#c9a84c;font-size:0.7rem;letter-spacing:0.2em;text-transform:uppercase;margin:0 0 0.3rem">Inland Fund · Deal Fact Sheet</p>
+<h1 style="margin:0 0 0.25rem;font-size:1.6rem;color:#ffffff;border:none;padding:0">{business_name}</h1>
+<p style="color:#b8c8de;font-size:0.85rem;margin:0">Generated: {datetime.today().strftime('%d %B %Y at %H:%M')}</p>
 </div>
 <pre style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:0.92rem">{full_output}</pre>
 <div class="ftr">Inland Fund · Confidential · AI-assisted — requires analyst review</div>
@@ -1168,7 +1168,7 @@ tr:nth-child(even) td{{background:#f8f9fb}}
                 </p>
                 <p style="color:#888; font-size:0.8rem; margin-top:1.5rem;">
                     Questions? Contact us at
-                    <a href="mailto:info@inlandfund.co.za" style="color:#e8610a;">
+                    <a href="mailto:info@inlandfund.co.za" style="color:#c9a84c;">
                         info@inlandfund.co.za
                     </a>
                 </p>
