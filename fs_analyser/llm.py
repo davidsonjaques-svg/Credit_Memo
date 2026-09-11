@@ -52,13 +52,20 @@ def call_claude(
     model: str = MODEL,
     temperature: float = 0.0,
 ) -> LLMResult:
-    resp = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        system=system,
-        messages=[{"role": "user", "content": content}],
-    )
+    kwargs = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "system": system,
+        "messages": [{"role": "user", "content": content}],
+    }
+    try:
+        resp = client.messages.create(temperature=temperature, **kwargs)
+    except TypeError as exc:
+        # Older SDK builds reject some keywords; retry without them.
+        if "temperature" not in str(exc):
+            raise
+        resp = client.messages.create(**kwargs)
+
     text = "".join(
         getattr(b, "text", "") for b in resp.content if getattr(b, "type", "") == "text"
     )
@@ -75,7 +82,6 @@ def call_claude(
             "Results may be incomplete; consider splitting the document."
         )
     return result
-
 
 def parse_json(text: str) -> dict:
     """Parse a JSON object from model text, tolerating fences and preambles."""
