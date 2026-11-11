@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from anthropic import Anthropic
 from utils import require_team_login, send_memo_email
+import db  # [SUPABASE]
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -625,11 +626,27 @@ Provide your rationale in 3–5 sentences. Include suggested deal structure if a
                     f'<div class="memo-container">{full_memo}</div>',
                     unsafe_allow_html=True
                 )
+            _final = stream.get_final_message()  # [SUPABASE] token usage + truncation
 
         # Final render
         memo_placeholder.markdown(
             f'<div class="memo-container">{full_memo}</div>',
             unsafe_allow_html=True
+        )
+
+        # ── [SUPABASE] Save memo, risk score and flags to the live database
+        db.save_assessment_safe(
+            business_name=business_name,
+            run_type="credit_memo",
+            payload=payload,
+            output_md=full_memo,
+            flags=risk_flags,
+            model=_final.model,
+            risk_score=risk_score,
+            rating=overall_risk,
+            usage={"input_tokens": _final.usage.input_tokens, "output_tokens": _final.usage.output_tokens},
+            stop_reason=_final.stop_reason,
+            client_fields={"legal_entity": business_type, "industry": industry},
         )
 
         # Download button

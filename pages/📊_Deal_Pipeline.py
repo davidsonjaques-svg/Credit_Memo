@@ -2,6 +2,7 @@ import streamlit as st
 import json
 from datetime import datetime, date
 from utils import require_team_login
+import db
 
 st.set_page_config(
     page_title="Deal Pipeline | Inland Fund",
@@ -23,6 +24,12 @@ STAGE_COLORS = {
     "Closed":           "#22c55e",
 }
 TEAM_MEMBERS = ["Jaques", "Team Member 2", "Team Member 3", "Team Member 4", "Unassigned"]
+if db.is_enabled():
+    try:
+        TEAM_MEMBERS = [m["full_name"] for m in db.list_members()] + ["Unassigned"]
+    except Exception as e:
+        st.error(f"Database connection failed: {e}")
+        st.stop()
 OUTCOME_OPTIONS = ["In Progress", "Funded", "Declined", "Withdrawn"]
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
@@ -106,7 +113,7 @@ label { color:var(--muted) !important; font-size:0.82rem !important; }
 """, unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# STORAGE LAYER — Google Sheets backend with session fallback
+# STORAGE LAYER — Supabase (live) → Google Sheets (legacy) → session fallback
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _get_gsheet():
@@ -137,7 +144,25 @@ def _get_gsheet():
 DEAL_COLUMNS = ["id","business_name","deal_value","stage","owner","outcome",
                 "created","last_updated","stage_entered","notes","contact_email"]
 
+def _fmt_ts(v):
+    return v.astimezone().strftime("%Y-%m-%d %H:%M") if v else ""
+
+def _from_db(r):
+    """Map a v_pipeline row onto the dict shape the rest of this page uses."""
+    return {
+        "id": str(r["id"]), "deal_ref": r["deal_ref"], "business_name": r["client"],
+        "deal_name": r["deal_name"], "deal_value": float(r["funding_required"] or 0),
+        "stage": r["stage"], "owner": r["owner"] or "Unassigned", "outcome": r["outcome"],
+        "created": _fmt_ts(r["created_at"]), "last_updated": _fmt_ts(r["updated_at"]),
+        "stage_entered": _fmt_ts(r["stage_entered_at"]), "notes": r["notes"] or "",
+        "contact_email": r["contact_email"] or "", "rating": r["rating"] or "",
+        "high_flags": int(r["high_flags"] or 0), "run_count": int(r["run_count"] or 0),
+        "last_assessed": _fmt_ts(r["last_assessed_at"]),
+    }
+
 def load_deals():
+    if db.is_enabled():
+        return [_from_db(r) for r in db.list_pipeline()], "supabase"
     ws = _get_gsheet()
     if ws:
         try:
@@ -165,12 +190,24 @@ def save_all_deals(deals):
     return False
 
 def add_deal(deal):
+    if db.is_enabled():
+        db.create_deal(deal["business_name"], deal.get("deal_value") or 0, stage=deal["stage"],
+                       outcome=deal["outcome"], owner_id=db.member_id_by_name(deal.get("owner")),
+                       notes=deal.get("notes", ""), contact_email=deal.get("contact_email", ""))
+        return
     deals, mode = load_deals()
     deals = list(deals)
     deals.append(deal)
     save_all_deals(deals)
 
 def update_deal(deal_id, updates):
+    if db.is_enabled():
+        mapped = {"stage": updates.get("stage"), "outcome": updates.get("outcome"),
+                  "funding_required": updates.get("deal_value"), "notes": updates.get("notes"),
+                  "owner_id": db.member_id_by_name(updates.get("owner"))}
+        db.update_deal(deal_id, **{k: v for k, v in mapped.items()
+                                   if v is not None or k == "owner_id"})
+        return
     deals, mode = load_deals()
     deals = list(deals)
     for d in deals:
@@ -180,6 +217,9 @@ def update_deal(deal_id, updates):
     save_all_deals(deals)
 
 def delete_deal(deal_id):
+    if db.is_enabled():
+        db.delete_deal(deal_id)
+        return
     deals, mode = load_deals()
     deals = [d for d in deals if str(d.get("id")) != str(deal_id)]
     save_all_deals(deals)
@@ -210,7 +250,21 @@ deals, storage_mode = load_deals()
 
 # Storage indicator
 if storage_mode == "session":
-    st.info("💾 Running in session mode (data resets on app restart). To enable permanent shared storage, connect a Google Sheet — see setup notes at the bottom of this page.")
+    st.info("💾 Running in session mode (data resets on app restart). To enable permanent shared storage, connect Supabase — see setup notes at the bottom of this page.")
+elif storage_mode == "supabase":
+    st.caption("🟢 Live database · every change is saved and shared with the team instantly")
+    if _get_gsheet() is not None:
+        with st.expander("⇪ Import deals from the old Google Sheet (one-off)"):
+            st.write("Copies every row from the legacy `deals` sheet into the database. "
+                     "Safe to run twice — rows already imported are skipped. The sheet is not changed.")
+            if st.button("Import from Google Sheet"):
+                try:
+                    rows = _get_gsheet().get_all_records()
+                    done, skipped = db.import_legacy_deals(rows)
+                    st.success(f"Imported {done} deal(s); skipped {skipped}.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Import failed: {e}")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # KPI DASHBOARD
@@ -294,6 +348,7 @@ for i, stage in enumerate(STAGES):
                 <div class="name">{d.get('business_name','—')}</div>
                 <div class="val">{fmt_zar(d.get('deal_value',0))}</div>
                 <div class="meta">{d.get('owner','—')} · {days}d in stage</div>
+                {f'<div class="meta">{d["deal_ref"]}' + (f' · {d["rating"]}' if d.get("rating") else '') + (f' · 🚩{d["high_flags"]}' if d.get("high_flags") else '') + '</div>' if d.get("deal_ref") else ''}
             </div>
             """, unsafe_allow_html=True)
 
@@ -344,7 +399,7 @@ else:
                 updates = {"stage": new_stg, "owner": new_own, "outcome": new_out,
                            "deal_value": new_val, "notes": new_note}
                 # If stage changed, reset stage_entered timer
-                if new_stg != d.get("stage"):
+                if new_stg != d.get("stage") and storage_mode != "supabase":
                     updates["stage_entered"] = datetime.now().strftime("%Y-%m-%d %H:%M")
                 update_deal(d["id"], updates)
                 st.success("Updated.")
@@ -354,6 +409,23 @@ else:
                 st.warning(f"Deleted '{d.get('business_name')}'.")
                 st.rerun()
             st.caption(f"Created {d.get('created','—')} · Last updated {d.get('last_updated','—')} · {days} days in current stage")
+            if storage_mode == "supabase":
+                if b3.button("📈 Stage history & assessments", key=f"hist_{d['id']}"):
+                    runs = db.list_runs(d["id"])
+                    if runs:
+                        st.dataframe([{ "When": _fmt_ts(r["created_at"]), "Type": r["run_type"],
+                                        "Rating": r["rating"], "Score": r["risk_score"],
+                                        "High/Critical flags": r["high_flags"],
+                                        "Truncated": "⚠️" if r["truncated"] else "",
+                                        "By": r["created_by"] or "—"} for r in runs],
+                                     hide_index=True, use_container_width=True)
+                        for r in runs:
+                            if r["pdf_path"]:
+                                url = db.signed_url("outputs", r["pdf_path"])
+                                if url:
+                                    st.markdown(f"[⬇ PDF — {r['run_type']} {_fmt_ts(r['created_at'])}]({url})")
+                    else:
+                        st.caption("No assessments generated for this deal yet.")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TABLE VIEW + EXPORT
@@ -362,7 +434,7 @@ if deals:
     st.markdown('<div class="section-label">📋 All Deals — Table View</div>', unsafe_allow_html=True)
     import pandas as pd
     df = pd.DataFrame(deals)
-    display_cols = ["business_name","deal_value","stage","owner","outcome","created","last_updated"]
+    display_cols = ["deal_ref","business_name","deal_value","stage","owner","outcome","rating","high_flags","created","last_updated"]
     df_display = df[[c for c in display_cols if c in df.columns]].copy()
     if "deal_value" in df_display.columns:
         df_display["deal_value"] = df_display["deal_value"].apply(fmt_zar)
@@ -377,7 +449,21 @@ if deals:
 # ═══════════════════════════════════════════════════════════════════════════════
 # SETUP NOTES
 # ═══════════════════════════════════════════════════════════════════════════════
-with st.expander("⚙️ Setup: Enable Permanent Shared Storage (Google Sheets)"):
+with st.expander("⚙️ Setup: Live database (Supabase)"):
+    st.markdown("""
+    Full steps are in **supabase/SETUP.md** in the repo. In short:
+
+    1. Create a Supabase project → **SQL Editor** → run `supabase/schema.sql`, then `supabase/bootstrap.sql`
+    2. **Connect → Session pooler** → copy the connection string (Streamlit Cloud needs the pooler; the direct host is IPv6-only)
+    3. Add to Streamlit secrets:
+    ```toml
+    DATABASE_URL         = "postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres"
+    SUPABASE_URL         = "https://<ref>.supabase.co"
+    SUPABASE_SERVICE_KEY = "<secret key>"
+    ```
+    The page switches to the live database automatically. If a Google Sheet is still configured, an import button appears at the top.
+    """)
+with st.expander("⚙️ Legacy: Google Sheets storage (superseded by Supabase)"):
     st.markdown("""
     By default this runs in **session mode** — data resets when the app restarts. To make deals persist permanently and share across your team of 4, connect a Google Sheet:
 

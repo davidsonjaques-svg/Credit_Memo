@@ -6,7 +6,8 @@ from financial_extractor import extract_financials, to_fact_sheet_defaults
 import tempfile
 from pdf_memo_renderer import render_deal_pdf
 from anthropic import Anthropic
-from utils import require_team_login, send_memo_email
+from utils import require_team_login, send_memo_email, validate_client_token
+import db  # [SUPABASE]
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -24,6 +25,8 @@ _is_client = bool(_token)
 # Team login only for internal access (not client token links)
 if not _is_client:
     require_team_login()
+elif db.is_enabled():  # [SUPABASE] a client link must be real, unexpired and unused
+    _link_record = validate_client_token()
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -937,6 +940,7 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
                     f'<div class="output-container">{full_output}</div>',
                     unsafe_allow_html=True
                 )
+            _final = stream.get_final_message()  # [SUPABASE] token usage + truncation
 
         output_placeholder.markdown(
             f'<div class="output-container">{full_output}</div>',
@@ -971,6 +975,24 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
                         pdf_bytes = f.read()
             except Exception as e:
                 st.warning(f"⚠️ Branded PDF generation failed: {e} — other download formats still available below.")   
+
+        # ── [SUPABASE] Save fact sheet, financials, run, flags and PDF to the live database
+        db.save_assessment_safe(
+            business_name=business_name,
+            run_type="fact_sheet_assessment",
+            payload=payload,
+            output_md=full_output,
+            flags=flags,
+            model=_final.model,
+            source="client_link" if _is_client else "analyst",
+            client_token=_token or None,
+            rating=analyst_recommendation,
+            usage={"input_tokens": _final.usage.input_tokens, "output_tokens": _final.usage.output_tokens},
+            stop_reason=_final.stop_reason,
+            pdf_bytes=pdf_bytes,
+            client_fields={"legal_entity": legal_entity, "bee_level": bee_status,
+                           "date_established": date_established},
+        )
             
         # ── Email delivery ────────────────────────────────────────────────────
         subject = f"[ScaleForce] Deal Assessment — {business_name} — {datetime.today().strftime('%d %b %Y')}"
@@ -983,68 +1005,69 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
             st.markdown("**Download Assessment:**")
             dl1, dl2, dl3, dl4 = st.columns(4)
 
-        dl1.download_button(
-            label="⬇  Download as .txt",
-            data=full_output,
-            file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.txt",
-            mime="text/plain",
-            use_container_width=True,
-            help="Opens in Notepad on any Windows PC"
-        )
-
-        dl2.download_button(
-            label="⬇  Download as .md",
-            data=full_output,
-            file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.md",
-            mime="text/markdown",
-            use_container_width=True,
-            help="Use with Notion, Obsidian or VS Code"
-        )
-
-        html_output = f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
-<title>ScaleForce — {business_name}</title>
-<style>
-body{{font-family:Arial,sans-serif;max-width:900px;margin:3rem auto;padding:2rem;color:#1a1a1a;line-height:1.7}}
-h1{{color:#e8610a;border-bottom:3px solid #e8610a;padding-bottom:0.5rem}}
-h2{{color:#e8610a;border-bottom:2px solid #e8610a;padding-bottom:0.3rem;font-size:1rem;letter-spacing:0.1em;text-transform:uppercase;margin-top:2rem}}
-h3{{color:#1d4ed8}}
-table{{width:100%;border-collapse:collapse;margin:1rem 0}}
-th{{background:#fff4ee;color:#e8610a;padding:0.5rem 0.8rem;text-align:left;border:1px solid #fcd9c4;font-size:0.85rem}}
-td{{padding:0.45rem 0.8rem;border:1px solid #dde1e8}}
-tr:nth-child(even) td{{background:#f8f9fb}}
-.hdr{{background:#fff7f2;border-top:4px solid #e8610a;padding:1.5rem 2rem;margin-bottom:2rem;border-radius:4px}}
-.ftr{{color:#aaa;font-size:0.75rem;text-align:center;border-top:1px solid #ddd;margin-top:3rem;padding-top:1rem}}
-</style></head><body>
-<div class="hdr">
-<p style="color:#e8610a;font-size:0.7rem;letter-spacing:0.2em;text-transform:uppercase;margin:0 0 0.3rem">Inland Fund · Deal Fact Sheet</p>
-<h1 style="margin:0 0 0.25rem;font-size:1.6rem">{business_name}</h1>
-<p style="color:#555;font-size:0.85rem;margin:0">Generated: {datetime.today().strftime('%d %B %Y at %H:%M')}</p>
-</div>
-<pre style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:0.92rem">{full_output}</pre>
-<div class="ftr">Inland Fund · Confidential · AI-assisted — requires analyst review</div>
-</body></html>"""
-
-        dl3.download_button(
-            label="⬇  Download as .html",
-            data=html_output,
-            file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.html",
-            mime="text/html",
-            use_container_width=True,
-            help="Opens in browser — print to PDF via File > Print > Save as PDF"
-        )
-        
-        if pdf_bytes:
-            dl4.download_button(
-                label="⬇  Download Branded PDF",
-                data=pdf_bytes,
-                file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf",
+        if not _is_client:  # [FIX] clients never get downloads — dl1..dl4 only exist for the team
+            dl1.download_button(
+                label="⬇  Download as .txt",
+                data=full_output,
+                file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.txt",
+                mime="text/plain",
                 use_container_width=True,
-                help="Navy/gold branded PDF with charts — ready to send to credit committee"
+                help="Opens in Notepad on any Windows PC"
             )
 
-        st.caption("💡 Tip: The .html file gives the best view and can be printed to PDF from your browser (File → Print → Save as PDF)")
+            dl2.download_button(
+                label="⬇  Download as .md",
+                data=full_output,
+                file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.md",
+                mime="text/markdown",
+                use_container_width=True,
+                help="Use with Notion, Obsidian or VS Code"
+            )
+
+            html_output = f"""<!DOCTYPE html>
+    <html><head><meta charset="UTF-8">
+    <title>ScaleForce — {business_name}</title>
+    <style>
+    body{{font-family:Arial,sans-serif;max-width:900px;margin:3rem auto;padding:2rem;color:#1a1a1a;line-height:1.7}}
+    h1{{color:#e8610a;border-bottom:3px solid #e8610a;padding-bottom:0.5rem}}
+    h2{{color:#e8610a;border-bottom:2px solid #e8610a;padding-bottom:0.3rem;font-size:1rem;letter-spacing:0.1em;text-transform:uppercase;margin-top:2rem}}
+    h3{{color:#1d4ed8}}
+    table{{width:100%;border-collapse:collapse;margin:1rem 0}}
+    th{{background:#fff4ee;color:#e8610a;padding:0.5rem 0.8rem;text-align:left;border:1px solid #fcd9c4;font-size:0.85rem}}
+    td{{padding:0.45rem 0.8rem;border:1px solid #dde1e8}}
+    tr:nth-child(even) td{{background:#f8f9fb}}
+    .hdr{{background:#fff7f2;border-top:4px solid #e8610a;padding:1.5rem 2rem;margin-bottom:2rem;border-radius:4px}}
+    .ftr{{color:#aaa;font-size:0.75rem;text-align:center;border-top:1px solid #ddd;margin-top:3rem;padding-top:1rem}}
+    </style></head><body>
+    <div class="hdr">
+    <p style="color:#e8610a;font-size:0.7rem;letter-spacing:0.2em;text-transform:uppercase;margin:0 0 0.3rem">Inland Fund · Deal Fact Sheet</p>
+    <h1 style="margin:0 0 0.25rem;font-size:1.6rem">{business_name}</h1>
+    <p style="color:#555;font-size:0.85rem;margin:0">Generated: {datetime.today().strftime('%d %B %Y at %H:%M')}</p>
+    </div>
+    <pre style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:0.92rem">{full_output}</pre>
+    <div class="ftr">Inland Fund · Confidential · AI-assisted — requires analyst review</div>
+    </body></html>"""
+
+            dl3.download_button(
+                label="⬇  Download as .html",
+                data=html_output,
+                file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.html",
+                mime="text/html",
+                use_container_width=True,
+                help="Opens in browser — print to PDF via File > Print > Save as PDF"
+            )
+        
+            if pdf_bytes:
+                dl4.download_button(
+                    label="⬇  Download Branded PDF",
+                    data=pdf_bytes,
+                    file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    help="Navy/gold branded PDF with charts — ready to send to credit committee"
+                )
+
+            st.caption("💡 Tip: The .html file gives the best view and can be printed to PDF from your browser (File → Print → Save as PDF)")
 
         # ── Client thank-you (shown when accessed via token URL) ──────────────
         params = st.query_params

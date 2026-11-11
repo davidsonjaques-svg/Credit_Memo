@@ -2,6 +2,7 @@ import streamlit as st
 import secrets
 from datetime import datetime, timedelta
 from utils import require_team_login
+import db
 
 st.set_page_config(
     page_title="Token Manager | Inland Fund",
@@ -60,6 +61,7 @@ h1,h2,h3 { font-family:'Playfair Display',serif !important; }
 .badge-active  { background:rgba(34,197,94,0.15);  color:#22c55e; border:1px solid #22c55e44; }
 .badge-used    { background:rgba(239,68,68,0.15);   color:#ef4444; border:1px solid #ef444444; }
 .badge-expired { background:rgba(245,158,11,0.15);  color:#f59e0b; border:1px solid #f59e0b44; }
+.badge-revoked { background:rgba(138,154,181,0.15); color:#8a9ab5; border:1px solid #8a9ab544; }
 
 .stat-chip {
     background:var(--card); border:1px solid var(--border); border-radius:3px;
@@ -88,9 +90,26 @@ label { color:var(--muted) !important; font-size:0.82rem !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Session state token store ─────────────────────────────────────────────────
+# ── Token store: Supabase when live, session state otherwise ─────────────────
+DB_MODE = db.is_enabled()
 if "token_store" not in st.session_state:
     st.session_state.token_store = {}
+
+def load_tokens():
+    """{key: record}. In DB mode the key is the link id (raw tokens are never stored)."""
+    if not DB_MODE:
+        return st.session_state.token_store
+    out = {}
+    for l in db.list_links():
+        out[l["id"]] = {
+            "client_name": l["client_name"], "client_email": l["client_email"],
+            "created_utc": l["created_at"].astimezone().replace(tzinfo=None).isoformat(),
+            "expires_utc": l["expires_at"].astimezone().replace(tzinfo=None).isoformat(),
+            "used": bool(l["used_at"]),
+            "used_at": l["used_at"].isoformat() if l["used_at"] else None,
+            "status": l["status"], "deal_name": l["deal_name"],
+        }
+    return out
 
 def get_base_url():
     try:
@@ -102,6 +121,8 @@ def get_base_url():
     return "https://your-app.streamlit.app"
 
 def token_status(record):
+    if record.get("status"):
+        return record["status"]
     if record.get("used"):
         return "used"
     if datetime.utcnow() > datetime.fromisoformat(record["expires_utc"]):
@@ -110,7 +131,7 @@ def token_status(record):
 
 def time_remaining(record):
     exp   = datetime.fromisoformat(record["expires_utc"])
-    delta = exp - datetime.utcnow()
+    delta = exp - (datetime.now() if DB_MODE else datetime.utcnow())
     if delta.total_seconds() <= 0:
         return "Expired"
     h = int(delta.total_seconds() // 3600)
@@ -127,9 +148,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Stats ─────────────────────────────────────────────────────────────────────
-tokens = st.session_state.token_store
+tokens = load_tokens()
 active  = sum(1 for r in tokens.values() if token_status(r) == "active")
-used    = sum(1 for r in tokens.values() if token_status(r) == "used")
+used    = sum(1 for r in tokens.values() if token_status(r) in ("used", "revoked"))
 expired = sum(1 for r in tokens.values() if token_status(r) == "expired")
 
 c1, c2, c3, c4 = st.columns(4)
@@ -148,6 +169,12 @@ with st.container():
     client_email = c2.text_input("Client Email Address *",  placeholder="e.g. john@acme.co.za")
     expiry_hours = c3.selectbox("Expires In", [24, 48, 72, 120, 168], index=2,
                                 format_func=lambda x: f"{x//24} day{'s' if x//24>1 else ''}")
+    link_deal_id = None
+    if DB_MODE:
+        _open = [d for d in db.list_pipeline() if d["outcome"] == "In Progress"]
+        _opts = {"— New deal (created when the client submits) —": None}
+        _opts.update({f'{d["deal_ref"]} · {d["client"]} · {d["stage"]}': str(d["id"]) for d in _open})
+        link_deal_id = _opts[st.selectbox("Attach to pipeline deal", list(_opts))]
     generate = st.button("⚡  Generate Secure Link", use_container_width=False)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -155,24 +182,24 @@ if generate:
     if not client_name or not client_email:
         st.error("Please enter both client name and email address.")
     else:
-        token  = secrets.token_urlsafe(32)
-        expiry = (datetime.utcnow() + timedelta(hours=expiry_hours)).isoformat()
-        st.session_state.token_store[token] = {
-            "client_name":  client_name,
-            "client_email": client_email,
-            "created_utc":  datetime.utcnow().isoformat(),
-            "expires_utc":  expiry,
-            "expiry_hours": expiry_hours,
-            "used":         False,
-            "used_at":      None,
-        }
+        if DB_MODE:
+            token = db.create_link(client_name, client_email, expiry_hours, deal_id=link_deal_id)
+        else:
+            token  = secrets.token_urlsafe(32)
+            expiry = (datetime.utcnow() + timedelta(hours=expiry_hours)).isoformat()
+            st.session_state.token_store[token] = {
+                "client_name":  client_name,
+                "client_email": client_email,
+                "created_utc":  datetime.utcnow().isoformat(),
+                "expires_utc":  expiry,
+                "expiry_hours": expiry_hours,
+                "used":         False,
+                "used_at":      None,
+            }
 
         base_url    = get_base_url()
         client_link = f"{base_url}/Fact_Sheet?token={token}"
 
-        st.success(f"✅ Secure link generated for **{client_name}**")
-        st.markdown(f'<div class="link-box">🔗 {client_link}</div>', unsafe_allow_html=True)
-        st.code(client_link, language=None)
 
         first_name = client_name.split()[0] if client_name else "Sir/Madam"
         email_body = f"""Dear {first_name},
@@ -197,10 +224,21 @@ Kind regards,
 Inland Fund Investment Team
 info@inlandfund.co.za"""
 
-        with st.expander("📧 Email Template — Click to expand, copy and send", expanded=True):
-            st.text_area("", value=email_body, height=300,
-                         help="Select all (Ctrl+A) → Copy (Ctrl+C) → Paste into your email client")
+        st.session_state["_last_link"] = {"client_name": client_name, "link": client_link,
+                                          "email_body": email_body}
+        st.rerun()
 
+if st.session_state.get("_last_link"):
+    _ll = st.session_state["_last_link"]
+    st.success(f"✅ Secure link generated for **{_ll['client_name']}**"
+               + (" — copy it now; for security it is stored only as a fingerprint and cannot be shown again."
+                  if DB_MODE else ""))
+    st.code(_ll["link"], language=None)
+    with st.expander("📧 Email Template — Click to expand, copy and send", expanded=True):
+        st.text_area("Email", value=_ll["email_body"], height=300, label_visibility="collapsed",
+                     help="Select all (Ctrl+A) → Copy (Ctrl+C) → Paste into your email client")
+    if st.button("Done — hide this link"):
+        del st.session_state["_last_link"]
         st.rerun()
 
 # ── Token list ────────────────────────────────────────────────────────────────
@@ -213,12 +251,15 @@ if not tokens:
     </div>""", unsafe_allow_html=True)
 else:
     fc1, fc2, fc3 = st.columns([2, 2, 1])
-    filter_by  = fc1.selectbox("Filter", ["All", "Active", "Used", "Expired"], label_visibility="collapsed")
+    filter_by  = fc1.selectbox("Filter", ["All", "Active", "Used", "Expired", "Revoked"], label_visibility="collapsed")
     search     = fc2.text_input("Search", placeholder="Search client name…", label_visibility="collapsed")
     if fc3.button("🗑 Purge Old", use_container_width=True, help="Remove all used and expired links"):
-        st.session_state.token_store = {
-            t: r for t, r in tokens.items() if token_status(r) == "active"
-        }
+        if DB_MODE:
+            db.purge_links()
+        else:
+            st.session_state.token_store = {
+                t: r for t, r in tokens.items() if token_status(r) == "active"
+            }
         st.success("Expired and used links removed.")
         st.rerun()
 
@@ -241,15 +282,18 @@ else:
             email = record.get("client_email", "—")
             time_str = time_remaining(record) if status == "active" else (
                 f"Used {record['used_at'][:10]}" if record.get("used_at") else "Used"
-            ) if status == "used" else "Expired"
+            ) if status == "used" else ("Revoked" if status == "revoked" else "Expired")
             created = record.get("created_utc","")[:10]
             st.markdown(f"""
-            {badge} &nbsp; <strong style="color:#f5f0e8">{name}</strong><br>
+            {badge} &nbsp; <strong style="color:#f5f0e8">{name}</strong>{(" · " + record["deal_name"]) if record.get("deal_name") else ""}<br>
             <span style="color:#8a9ab5;font-size:0.82rem">{email} · {time_str} · Created {created}</span>
             """, unsafe_allow_html=True)
 
         with col2:
-            if status == "active":
+            if status == "active" and DB_MODE:
+                st.markdown("<span style='color:#8a9ab5;font-size:0.8rem'>🔒 Link shown once at creation · revoke and reissue if lost</span>",
+                            unsafe_allow_html=True)
+            elif status == "active":
                 base_url    = get_base_url()
                 client_link = f"{base_url}/Fact_Sheet?token={token}"
                 st.code(client_link, language=None)
@@ -261,8 +305,11 @@ else:
             if status == "active":
                 if st.button("Revoke", key=f"rev_{token}",
                             help="Immediately invalidate this link"):
-                    st.session_state.token_store[token]["used"]    = True
-                    st.session_state.token_store[token]["used_at"] = datetime.utcnow().isoformat()
+                    if DB_MODE:
+                        db.revoke_link(token)
+                    else:
+                        st.session_state.token_store[token]["used"]    = True
+                        st.session_state.token_store[token]["used_at"] = datetime.utcnow().isoformat()
                     st.warning(f"Revoked link for {record.get('client_name')}")
                     st.rerun()
 
