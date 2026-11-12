@@ -129,6 +129,10 @@ def test_fact_sheet_analyst_saves_run():
     sev = _q("select severity from risk_flags f join deals d on d.id=f.deal_id join clients c on c.id=d.client_id "
              "where c.legal_name='Fact Sheet Page Co'")
     assert ("CRITICAL",) in sev          # current ratio 0.8
+    # the affordability table travels with the saved fact sheet
+    aff = _q("select f.payload->'affordability'->>'verdict' from fact_sheets f join deals d on d.id=f.deal_id "
+             "join clients c on c.id=d.client_id where c.legal_name='Fact Sheet Page Co'")
+    assert aff == [("Not assessed",)]
 
 
 def test_fact_sheet_client_link_flow():
