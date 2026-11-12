@@ -7,7 +7,8 @@ from financial_extractor import extract_financials, to_fact_sheet_defaults
 import tempfile
 from pdf_memo_renderer import render_deal_pdf
 from anthropic import Anthropic
-from utils import require_team_login, send_memo_email
+from utils import require_team_login, send_memo_email, validate_client_token
+import db  # [SUPABASE]
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -24,6 +25,8 @@ _is_client = bool(_token)
 # Team login only for internal access (not client token links)
 if not _is_client:
     require_team_login()
+elif db.is_enabled():  # [SUPABASE] a client link must be real, unexpired and unused
+    _link_record = validate_client_token()
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -1084,6 +1087,24 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
                         pdf_bytes = f.read()
             except Exception as e:
                 st.warning(f"⚠️ Branded PDF generation failed: {e} — other download formats still available below.")
+
+        # ── [SUPABASE] Save fact sheet, financials, run, flags and PDF to the live database
+        db.save_assessment_safe(
+            business_name=business_name,
+            run_type="fact_sheet_assessment",
+            payload=payload,
+            output_md=full_output,
+            flags=flags,
+            model=_final.model,
+            source="client_link" if _is_client else "analyst",
+            client_token=_token or None,
+            rating=analyst_recommendation,
+            usage={"input_tokens": _final.usage.input_tokens, "output_tokens": _final.usage.output_tokens},
+            stop_reason=_final.stop_reason,
+            pdf_bytes=pdf_bytes,
+            client_fields={"legal_entity": legal_entity, "bee_level": bee_status,
+                           "date_established": date_established},
+        )
 
         # ── Email delivery ────────────────────────────────────────────────────
         subject = f"[Inland Fund] Deal Assessment — {business_name} — {datetime.today().strftime('%d %b %Y')}"

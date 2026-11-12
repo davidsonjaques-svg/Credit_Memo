@@ -39,6 +39,7 @@ def require_team_login():
         st.session_state.authenticated = False
 
     if st.session_state.authenticated:
+        _member_picker()
         return True
 
     # Show login screen
@@ -70,6 +71,28 @@ def require_team_login():
             else:
                 st.error("Incorrect password. Please try again.")
         st.stop()
+
+
+def _member_picker():
+    """
+    With the live database on, each person picks their name once per session so
+    deals, stage moves and generated memos are attributed to them.
+    (Phase 2 replaces this with individual Supabase logins.)
+    """
+    try:
+        import db
+        if not db.is_enabled():
+            return
+        members = db.list_members()
+    except Exception:
+        return
+    if not members:
+        return
+    names = [m["full_name"] for m in members]
+    ids = {m["full_name"]: m["id"] for m in members}
+    current = next((n for n, i in ids.items() if i == st.session_state.get("member_id")), names[0])
+    choice = st.sidebar.selectbox("👤 Working as", names, index=names.index(current), key="_member_name")
+    st.session_state.member_id = ids[choice]
 
 
 # ── Email Delivery ────────────────────────────────────────────────────────────
@@ -162,6 +185,18 @@ def validate_client_token() -> dict | None:
     if not token:
         _show_invalid_token("No access token provided.")
         return None
+
+    # Live database: links are created on the Token Manager page and stored hashed
+    import db
+    if db.is_enabled():
+        try:
+            record, reason = db.link_status(token)
+        except Exception:
+            record, reason = None, "Token validation error. Please try again shortly."
+        if not record:
+            _show_invalid_token(reason)
+            return None
+        return record
 
     tokens_file = Path("tokens.json")
     if not tokens_file.exists():
