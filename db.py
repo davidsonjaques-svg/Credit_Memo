@@ -51,22 +51,121 @@ def is_enabled() -> bool:
     return bool(_secret("DATABASE_URL"))
 
 
+class DatabaseConfigError(RuntimeError):
+    """DATABASE_URL is wrong or the database is unreachable. Message is safe to show (no password)."""
+
+
+def _sslmode(conninfo: str) -> str:
+    return "require" if "supabase" in conninfo else "prefer"
+
+
+def _check_url(conninfo: str) -> None:
+    """Catch the common copy-paste mistakes before trying to connect."""
+    from urllib.parse import urlsplit
+
+    url = (conninfo or "").strip()
+    if url != conninfo or url[:1] in "'\"" or url[-1:] in "'\"":
+        raise DatabaseConfigError("DATABASE_URL has stray spaces or quote marks inside the value. "
+                                  "It should be one pair of double quotes around the whole string.")
+    if not url.startswith(("postgresql://", "postgres://")):
+        return                      # key=value style conninfo: let the driver judge it
+    if "YOUR-PASSWORD" in url.upper() or "<PASSWORD>" in url.upper():
+        raise DatabaseConfigError("DATABASE_URL still contains the password placeholder. Replace "
+                                  "[YOUR-PASSWORD], including the square brackets, with the database password.")
+    try:
+        parts = urlsplit(url)
+        host, user, port = parts.hostname or "", parts.username or "", parts.port
+    except ValueError:
+        raise DatabaseConfigError("DATABASE_URL could not be read. The password probably contains a symbol "
+                                  "such as @ : / # [ ]. Reset the database password in Supabase to letters "
+                                  "and numbers only, then paste the new string.") from None
+    try:
+        password = parts.password or ""
+    except ValueError:
+        password = ""
+    if any(c in password for c in "@:/#?[] "):
+        raise DatabaseConfigError("The database password contains a symbol (one of @ : / # ? [ ] or a space) that "
+                                  "breaks the connection string. Reset the password in Supabase to letters and "
+                                  "numbers only, then paste the new Session pooler string.")
+    if host.startswith("db.") and host.endswith(".supabase.co"):
+        raise DatabaseConfigError("DATABASE_URL is the Direct connection string (host starts with db.), which "
+                                  "Streamlit Cloud cannot reach. In Supabase click Connect, choose Session "
+                                  "pooler, and copy that string instead.")
+    if "supabase" in url and not host.endswith(".pooler.supabase.com"):
+        raise DatabaseConfigError("DATABASE_URL host is not a Supabase pooler address, which usually means the "
+                                  "password contains a symbol such as @ : / # that splits the string. Reset the "
+                                  "database password to letters and numbers only and paste the new string.")
+    if host.endswith(".pooler.supabase.com"):
+        if not user.startswith("postgres."):
+            raise DatabaseConfigError("DATABASE_URL username should look like postgres.<project-ref> for the "
+                                      "Session pooler. Copy the string again from Connect, Session pooler.")
+        if port == 6543:
+            raise DatabaseConfigError("DATABASE_URL uses port 6543 (Transaction pooler). Use the Session "
+                                      "pooler string, which ends in :5432/postgres.")
+
+
+def _explain(err: Exception) -> str:
+    msg = str(err).lower()
+    if "password authentication failed" in msg:
+        return ("Supabase rejected the database password. Reset it in Supabase (Connect dialog, or Database "
+                "settings), use letters and numbers only, and update DATABASE_URL.")
+    if "tenant or user not found" in msg:
+        return ("Supabase does not recognise this project on that pooler address. The project ref or region in "
+                "DATABASE_URL does not match your project; copy the Session pooler string again from Connect.")
+    if "could not translate host name" in msg or "name or service not known" in msg or "nodename nor servname" in msg:
+        return ("The host name in DATABASE_URL does not exist. Copy the Session pooler string again; if the "
+                "password contains @ : / or #, reset it to letters and numbers only.")
+    if "network is unreachable" in msg or "cannot assign requested address" in msg:
+        return ("The database address is IPv6-only and Streamlit Cloud cannot reach it. Use the Session pooler "
+                "string from Connect.")
+    if "timeout" in msg or "timed out" in msg:
+        return ("The database did not answer. Check that the Supabase project is not paused and that "
+                "DATABASE_URL uses the Session pooler host on port 5432.")
+    if "ssl" in msg:
+        return "The secure (SSL) connection to the database failed. Copy the Session pooler string again."
+    return "The database refused the connection: " + str(err).strip().splitlines()[0][:200]
+
+
+def _safe(message: str, conninfo: str) -> str:
+    """Never echo any part of the credentials section of the URL back to the screen."""
+    creds = conninfo.split("://", 1)[-1].rsplit("@", 1)[0] if "@" in conninfo else ""
+    secret = creds.split(":", 1)[1] if ":" in creds else ""
+    pieces = [p for p in re.split(r"[@:/#?\[\]]", secret) if len(p) >= 3]
+    if secret and (secret in message or any(p in message for p in pieces)):
+        return ("The database connection string could not be used. Reset the database password in Supabase "
+                "to letters and numbers only, then paste the Session pooler string again.")
+    return message
+
+
+def _probe(conninfo: str) -> None:
+    """One direct connection attempt so a bad DATABASE_URL fails fast with the real reason."""
+    import psycopg
+
+    _check_url(conninfo)
+    try:
+        psycopg.connect(conninfo, connect_timeout=10, sslmode=_sslmode(conninfo)).close()
+    except psycopg.Error as e:
+        raise DatabaseConfigError(_safe(_explain(e), conninfo)) from None
+
+
 @st.cache_resource(show_spinner=False)
 def _pool(conninfo: str):
     from psycopg.rows import dict_row
     from psycopg_pool import ConnectionPool
 
+    _probe(conninfo)                # raises (and is not cached) if the URL is wrong
     return ConnectionPool(
         conninfo,
         min_size=1,
         max_size=4,
         open=True,
+        timeout=15,
         check=ConnectionPool.check_connection,   # drops dead connections after pooler idle-outs
         kwargs={
             "row_factory": dict_row,
             "prepare_threshold": None,   # safe on both session (5432) and transaction (6543) pooler
             "connect_timeout": 10,
-            "sslmode": "require" if "supabase" in conninfo else "prefer",
+            "sslmode": _sslmode(conninfo),
         },
     )
 
@@ -81,14 +180,25 @@ def current_member_id() -> Optional[str]:
 @contextmanager
 def tx():
     """One database transaction. Commits on success, rolls back on any error."""
-    pool = _pool(_secret("DATABASE_URL"))
-    with pool.connection() as conn:
-        with conn.transaction():
-            with conn.cursor() as cur:
-                mid = current_member_id()
-                if mid:
-                    cur.execute("select set_config('app.member_id', %s, true)", (str(mid),))
-                yield cur
+    from psycopg_pool import PoolTimeout
+
+    conninfo = _secret("DATABASE_URL")
+    pool = _pool(conninfo)
+    entered = False
+    try:
+        with pool.connection() as conn:
+            entered = True
+            with conn.transaction():
+                with conn.cursor() as cur:
+                    mid = current_member_id()
+                    if mid:
+                        cur.execute("select set_config('app.member_id', %s, true)", (str(mid),))
+                    yield cur
+    except PoolTimeout:
+        if entered:
+            raise
+        _probe(conninfo)            # surfaces the real reason if the database has gone away
+        raise DatabaseConfigError("The database is reachable but busy. Reload the page in a moment.") from None
 
 
 @st.cache_data(ttl=3600, show_spinner=False)

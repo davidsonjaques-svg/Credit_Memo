@@ -39,7 +39,7 @@ def db():
 def test_org_and_members(db):
     assert db.is_enabled()
     names = [m["full_name"] for m in db.list_members()]
-    assert "Jaques Davidson" in names and len(names) == 3
+    assert "Jaques Davidson" in names and "Shaun" in names and len(names) == 4
 
 
 def test_deal_lifecycle_and_stage_history(db):
