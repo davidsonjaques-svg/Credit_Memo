@@ -41,6 +41,10 @@ from fs_analyser.narrative import (
 
 st.set_page_config(page_title="FS Analyser | Inland Fund", page_icon="📊", layout="wide")
 
+# Team login — same gate as every other internal page (the page spends API credits)
+from utils import require_team_login
+require_team_login()
+
 # ── Brand styling ───────────────────────────────────────────────────────────
 st.markdown(f"""
 <style>
