@@ -15,8 +15,8 @@ from orgs o
 cross join (values
   ('Jaques Davidson', 'admin'),
   ('Zach Moses',      'admin'),
-  ('Thabani',         'analyst')
-  -- ,('Fourth Member', 'analyst')
+  ('Thabani',         'analyst'),
+  ('Shaun',           'analyst')
 ) as t(full_name, role)
 where o.name = 'ScaleForce Capital'
 on conflict (org_id, full_name) do nothing;
