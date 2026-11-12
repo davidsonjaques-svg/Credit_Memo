@@ -418,7 +418,7 @@ else:
                                         "High/Critical flags": r["high_flags"],
                                         "Truncated": "⚠️" if r["truncated"] else "",
                                         "By": r["created_by"] or "—"} for r in runs],
-                                     hide_index=True, use_container_width=True)
+                                     hide_index=True, width="stretch")
                         for r in runs:
                             if r["pdf_path"]:
                                 url = db.signed_url("outputs", r["pdf_path"])
@@ -439,7 +439,7 @@ if deals:
     if "deal_value" in df_display.columns:
         df_display["deal_value"] = df_display["deal_value"].apply(fmt_zar)
     df_display.columns = [c.replace("_"," ").title() for c in df_display.columns]
-    st.dataframe(df_display, use_container_width=True, hide_index=True)
+    st.dataframe(df_display, width="stretch", hide_index=True)
 
     csv = df.to_csv(index=False)
     st.download_button("⬇ Export Pipeline as CSV", data=csv,
