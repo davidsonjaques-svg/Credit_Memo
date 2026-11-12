@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import base64
+import pandas as pd
 from datetime import datetime
 from financial_extractor import extract_financials, to_fact_sheet_defaults
 import tempfile
@@ -16,7 +17,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ── Require team login ─────────────────────────────────────────────────────────
 # ── Detect client token access ──────────────────────────────────────────────
 _token = st.query_params.get("token", "")
 _is_client = bool(_token)
@@ -31,29 +31,29 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
 
 :root {
-    --orange:      #e8610a;
-    --orange-lt:   #f97316;
-    --blue:        #1d4ed8;
-    --black:       #111111;
-    --text:        #1a1a1a;
-    --muted:       #555e6e;
-    --bg:          #ffffff;
-    --bg-soft:     #f8f9fb;
-    --border:      #dde1e8;
-    --border-dark: #c4cad4;
+    --navy:        #0a1628;
+    --navy2:       #111e33;
+    --navy3:       #0d1a2e;
+    --gold:        #c9a84c;
+    --gold2:       #e8c97a;
+    --cream:       #f5f0e8;
+    --text:        #f5f0e8;
+    --muted:       #8a9ab5;
+    --bg:          #0a1628;
+    --border:      #1e3050;
 }
 html, body, [data-testid="stAppViewContainer"] {
-    background: #ffffff !important;
-    color: #1a1a1a !important;
+    background: #0a1628 !important;
+    color: #f5f0e8 !important;
     font-family: 'IBM Plex Sans', sans-serif !important;
 }
 [data-testid="stHeader"]  { background: transparent !important; }
-[data-testid="stSidebar"] { background: #f1f3f7 !important; border-right: 1px solid #dde1e8 !important; }
+[data-testid="stSidebar"] { background: #0a1420 !important; border-right: 1px solid #1e3050 !important; }
 h1, h2, h3 { font-family: 'Playfair Display', serif !important; }
 .hero {
-    background: linear-gradient(135deg, #fff7f2 0%, #fff 60%);
-    border: 1px solid #fcd9c4;
-    border-top: 4px solid #e8610a;
+    background: linear-gradient(135deg, #0f2040 0%, #162540 60%, #0d1e35 100%);
+    border: 1px solid #1e3050;
+    border-top: 4px solid #c9a84c;
     border-radius: 6px;
     padding: 2.5rem 3rem 2rem;
     margin-bottom: 2rem;
@@ -64,45 +64,45 @@ h1, h2, h3 { font-family: 'Playfair Display', serif !important; }
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.7rem;
     letter-spacing: 0.25em;
-    color: #e8610a;
+    color: #c9a84c;
     text-transform: uppercase;
     margin-bottom: 0.5rem;
 }
-.hero h1 { font-size: 2.2rem; font-weight: 900; color: #e8610a; margin: 0 0 0.4rem; line-height: 1.15; }
-.hero-sub { color: #555e6e; font-size: 0.95rem; font-weight: 300; }
+.hero h1 { font-size: 2.2rem; font-weight: 900; color: #f5f0e8; margin: 0 0 0.4rem; line-height: 1.15; }
+.hero-sub { color: #8a9ab5; font-size: 0.95rem; font-weight: 300; }
 .section-label {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.68rem;
     letter-spacing: 0.2em;
-    color: #e8610a;
+    color: #c9a84c;
     text-transform: uppercase;
     font-weight: 600;
     margin: 1.75rem 0 0.75rem;
     padding-bottom: 0.4rem;
-    border-bottom: 2px solid #e8610a;
+    border-bottom: 2px solid #c9a84c;
 }
 [data-testid="stTextInput"] input,
 [data-testid="stTextArea"] textarea,
 [data-testid="stNumberInput"] input,
 [data-testid="stSelectbox"] > div {
-    background: #ffffff !important;
-    border: 1px solid #c4cad4 !important;
+    background: #0d1a2e !important;
+    border: 1px solid #1e3050 !important;
     border-radius: 4px !important;
-    color: #111111 !important;
+    color: #f5f0e8 !important;
     font-family: 'IBM Plex Sans', sans-serif !important;
     font-size: 0.9rem !important;
 }
 [data-testid="stTextInput"] input:focus,
 [data-testid="stTextArea"] textarea:focus,
 [data-testid="stNumberInput"] input:focus {
-    border-color: #1d4ed8 !important;
-    box-shadow: 0 0 0 2px rgba(29,78,216,0.12) !important;
+    border-color: #c9a84c !important;
+    box-shadow: 0 0 0 2px rgba(201,168,76,0.18) !important;
 }
-label, .stLabel { color: #1d4ed8 !important; font-size: 0.83rem !important; font-weight: 500 !important; }
+label, .stLabel { color: #cbd5e6 !important; font-size: 0.83rem !important; font-weight: 500 !important; }
 [data-testid="stFormSubmitButton"] button,
 .stButton button {
-    background: linear-gradient(135deg, #e8610a, #f97316) !important;
-    color: #ffffff !important;
+    background: linear-gradient(135deg, #c9a84c, #e8c97a) !important;
+    color: #0a1628 !important;
     font-family: 'IBM Plex Mono', monospace !important;
     font-weight: 600 !important;
     font-size: 0.85rem !important;
@@ -121,78 +121,78 @@ label, .stLabel { color: #1d4ed8 !important; font-size: 0.83rem !important; font
     letter-spacing: 0.1em;
     padding: 0.3rem 0.9rem;
     border-radius: 3px;
-    border: 1px solid #c4cad4;
-    color: #555e6e;
+    border: 1px solid #1e3050;
+    color: #8a9ab5;
     text-transform: uppercase;
-    background: #f8f9fb;
+    background: #0d1a2e;
 }
-.step.active { background: #fff4ee; border-color: #e8610a; color: #e8610a; font-weight: 600; }
-.step.done   { background: #f0fdf4; border-color: #86efac; color: #16a34a; }
+.step.active { background: #16223b; border-color: #c9a84c; color: #c9a84c; font-weight: 600; }
+.step.done   { background: #0f2a1c; border-color: #16a34a; color: #22c55e; }
 .helper-tip {
-    background: #eff6ff;
-    border-left: 3px solid #1d4ed8;
+    background: #111e33;
+    border-left: 3px solid #c9a84c;
     border-radius: 0 4px 4px 0;
     padding: 0.6rem 1rem;
     font-size: 0.82rem;
-    color: #1d4ed8;
+    color: #b8c8de;
     margin-bottom: 1rem;
 }
-.gold-divider { border: none; border-top: 1px solid #dde1e8; margin: 2rem 0; position: relative; }
+.gold-divider { border: none; border-top: 1px solid #1e3050; margin: 2rem 0; position: relative; }
 .gold-divider::after {
     content: '◆';
     position: absolute;
     left: 50%; top: -0.6rem;
     transform: translateX(-50%);
-    color: #e8610a;
+    color: #c9a84c;
     font-size: 0.7rem;
-    background: #ffffff;
+    background: #0a1628;
     padding: 0 0.5rem;
 }
 .output-container {
-    background: #ffffff;
-    border: 1px solid #dde1e8;
-    border-top: 3px solid #e8610a;
+    background: #111e33;
+    border: 1px solid #1e3050;
+    border-top: 3px solid #c9a84c;
     border-radius: 6px;
     padding: 2.5rem 3rem;
     font-family: 'IBM Plex Sans', sans-serif;
     line-height: 1.8;
-    color: #1a1a1a;
+    color: #e6ecf5;
 }
-.output-container h1 { color: #e8610a; font-size: 1.6rem; margin-bottom: 0.25rem; }
+.output-container h1 { color: #c9a84c; font-size: 1.6rem; margin-bottom: 0.25rem; }
 .output-container h2 {
-    color: #e8610a;
+    color: #c9a84c;
     font-size: 1rem;
     font-family: 'IBM Plex Mono', monospace !important;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     margin-top: 2rem; margin-bottom: 0.75rem;
     padding-bottom: 0.3rem;
-    border-bottom: 2px solid #e8610a;
+    border-bottom: 2px solid #c9a84c;
 }
-.output-container h3 { color: #1d4ed8; font-size: 0.97rem; margin: 1rem 0 0.3rem; }
-.output-container strong { color: #111111; }
+.output-container h3 { color: #e8c97a; font-size: 0.97rem; margin: 1rem 0 0.3rem; }
+.output-container strong { color: #ffffff; }
 .output-container table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.88rem; }
 .output-container th {
-    background: #fff4ee;
-    color: #e8610a;
+    background: #16223b;
+    color: #c9a84c;
     padding: 0.5rem 0.8rem;
     text-align: left;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.7rem;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    border: 1px solid #fcd9c4;
+    border: 1px solid #1e3050;
 }
-.output-container td { padding: 0.45rem 0.8rem; border: 1px solid #dde1e8; color: #1a1a1a; }
-.output-container tr:nth-child(even) td { background: #f8f9fb; }
+.output-container td { padding: 0.45rem 0.8rem; border: 1px solid #1e3050; color: #e6ecf5; }
+.output-container tr:nth-child(even) td { background: #0d1a2e; }
 .output-container ul { padding-left: 1.4rem; }
-.output-container li { margin-bottom: 0.35rem; color: #1a1a1a; }
+.output-container li { margin-bottom: 0.35rem; color: #e6ecf5; }
 .output-container blockquote {
-    border-left: 3px solid #1d4ed8;
+    border-left: 3px solid #c9a84c;
     margin: 0.5rem 0;
     padding: 0.4rem 1rem;
-    color: #555e6e;
-    background: #eff6ff;
+    color: #b8c8de;
+    background: #16223b;
     border-radius: 0 4px 4px 0;
     font-style: italic;
 }
@@ -240,7 +240,6 @@ st.markdown("""
 # BANK STATEMENT ANALYZER (runs BEFORE the form — needs interactive processing)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Initialise session state for bank analysis results
 if "bank_analysis" not in st.session_state:
     st.session_state.bank_analysis = None
 
@@ -277,7 +276,6 @@ if analyse_clicked:
                 try:
                     client = Anthropic(api_key=api_key)
 
-                    # Build document blocks from uploaded PDFs
                     doc_blocks = []
                     for f in uploaded_statements:
                         pdf_bytes = f.read()
@@ -315,7 +313,6 @@ Base everything strictly on what is actually in the statements. Do not invent fi
                     )
 
                     raw = "".join(block.text for block in response.content if hasattr(block, "text"))
-                    # Clean any accidental code fences
                     raw = raw.replace("```json", "").replace("```", "").strip()
 
                     parsed = json.loads(raw)
@@ -328,23 +325,22 @@ Base everything strictly on what is actually in the statements. Do not invent fi
                     st.error(f"Analysis failed: {e}")
                     st.info("You can still fill Section 06 manually below.")
 
-# Show current analysis summary if present
 if st.session_state.bank_analysis:
     ba = st.session_state.bank_analysis
     st.markdown(f"""
-    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-left:3px solid #1d4ed8;
+    <div style="background:#111e33; border:1px solid #1e3050; border-left:3px solid #c9a84c;
                 border-radius:0 4px 4px 0; padding:1rem 1.25rem; margin:0.5rem 0 1.5rem;">
         <div style="font-family:'IBM Plex Mono',monospace; font-size:0.62rem; letter-spacing:0.15em;
-                    color:#1d4ed8; text-transform:uppercase; margin-bottom:0.5rem;">
+                    color:#c9a84c; text-transform:uppercase; margin-bottom:0.5rem;">
             🤖 AI Analysis Result
         </div>
-        <div style="color:#1a1a1a; font-size:0.85rem; line-height:1.6;">
-            <strong>Months:</strong> {ba.get('months_reviewed','—')} &nbsp;|&nbsp;
-            <strong>Avg Monthly Credits:</strong> R {ba.get('avg_monthly_credits',0):,.0f} &nbsp;|&nbsp;
-            <strong>Returned Debits:</strong> {ba.get('rd_count','—')} &nbsp;|&nbsp;
-            <strong>Overdraft:</strong> {ba.get('overdraft_detected','—')}
+        <div style="color:#e6ecf5; font-size:0.85rem; line-height:1.6;">
+            <strong style="color:#ffffff;">Months:</strong> {ba.get('months_reviewed','—')} &nbsp;|&nbsp;
+            <strong style="color:#ffffff;">Avg Monthly Credits:</strong> R {ba.get('avg_monthly_credits',0):,.0f} &nbsp;|&nbsp;
+            <strong style="color:#ffffff;">Returned Debits:</strong> {ba.get('rd_count','—')} &nbsp;|&nbsp;
+            <strong style="color:#ffffff;">Overdraft:</strong> {ba.get('overdraft_detected','—')}
         </div>
-        <div style="color:#555; font-size:0.78rem; margin-top:0.5rem; font-style:italic;">
+        <div style="color:#8a9ab5; font-size:0.78rem; margin-top:0.5rem; font-style:italic;">
             {ba.get('confidence_note','')}
         </div>
     </div>
@@ -403,24 +399,23 @@ if extract_fin_clicked:
                     st.error(f"Extraction failed: {e}")
                     st.info("You can still fill Section 05 manually below.")
 
-# Show current extraction summary if present (same visual pattern as bank analysis card)
 _fe = st.session_state.get("financial_extraction") or {}
 if _fe:
     st.markdown(f"""
-    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-left:3px solid #1d4ed8;
+    <div style="background:#111e33; border:1px solid #1e3050; border-left:3px solid #c9a84c;
                 border-radius:0 4px 4px 0; padding:1rem 1.25rem; margin:0.5rem 0 1.5rem;">
         <div style="font-family:'IBM Plex Mono',monospace; font-size:0.62rem; letter-spacing:0.15em;
-                    color:#1d4ed8; text-transform:uppercase; margin-bottom:0.5rem;">
+                    color:#c9a84c; text-transform:uppercase; margin-bottom:0.5rem;">
             🤖 AI Extraction Result — {_fe.get('company_name','')}
         </div>
-        <div style="color:#1a1a1a; font-size:0.85rem; line-height:1.6;">
-            <strong>Periods found:</strong> {', '.join(_fe.get('periods', [])) or '—'} &nbsp;|&nbsp;
-            <strong>Most recent revenue:</strong> R {_fe.get('revenue_p2', 0):,.0f}
+        <div style="color:#e6ecf5; font-size:0.85rem; line-height:1.6;">
+            <strong style="color:#ffffff;">Periods found:</strong> {', '.join(_fe.get('periods', [])) or '—'} &nbsp;|&nbsp;
+            <strong style="color:#ffffff;">Most recent revenue:</strong> R {_fe.get('revenue_p2', 0):,.0f}
         </div>
-        <div style="color:#555; font-size:0.78rem; margin-top:0.5rem; font-style:italic;">
+        <div style="color:#8a9ab5; font-size:0.78rem; margin-top:0.5rem; font-style:italic;">
             {_fe.get('extraction_notes','')}
         </div>
-        <div style="color:#b45309; font-size:0.75rem; margin-top:0.5rem;">
+        <div style="color:#e8c97a; font-size:0.75rem; margin-top:0.5rem;">
             ⚠️ Confirm the FY dropdowns below (Period 1 / Period 2) actually match these extracted periods before submitting.
         </div>
     </div>
@@ -428,6 +423,110 @@ if _fe:
     if st.button("🗑  Clear Extraction", key="clear_financials"):
         st.session_state.financial_extraction = None
         st.rerun()
+
+st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AFFORDABILITY CALCULATION (interactive — lives outside the form)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+st.markdown('<div class="section-label">🧮 Affordability Calculation (Optional)</div>', unsafe_allow_html=True)
+st.markdown('<div class="helper-tip">💡 Can the business service the proposed facility? Start from Net Profit After Tax (latest period), deduct the loan installment and any royalty — the surplus/shortfall calculates live. Use the "Treatment" column to add back non-cash / non-recurring items (e.g. Depreciation) or add further deductions. Add rows as needed, or leave it as-is to skip.</div>', unsafe_allow_html=True)
+
+_npat_default = float(_fe.get("np_p2", 0.0) or 0.0)
+
+_default_afford = pd.DataFrame([
+    {"Item": "Net Profit After Tax (NPAT) — Latest Period", "Treatment": "NPAT (base)", "Amount (R)": _npat_default},
+    {"Item": "Loan Installment", "Treatment": "Less (−)", "Amount (R)": 0.0},
+    {"Item": "Royalty (if applicable)", "Treatment": "Less (−)", "Amount (R)": 0.0},
+])
+
+if "afford_table" not in st.session_state:
+    st.session_state.afford_table = _default_afford
+
+afford_edited = st.data_editor(
+    st.session_state.afford_table,
+    num_rows="dynamic",
+    use_container_width=True,
+    key="afford_editor",
+    column_config={
+        "Item": st.column_config.TextColumn("Item", width="large",
+            help="Line item — rename, delete, or add your own (e.g. Add back: Depreciation)"),
+        "Treatment": st.column_config.SelectboxColumn("Treatment",
+            options=["NPAT (base)", "Add back (+)", "Less (−)"], width="medium", required=True,
+            help="NPAT (base) = starting figure · Add back (+) = added to NPAT · Less (−) = deducted"),
+        "Amount (R)": st.column_config.NumberColumn("Amount (R)", format="%.0f"),
+    },
+)
+st.session_state.afford_table = afford_edited
+
+_af = afford_edited.copy()
+_af["Treatment"] = _af["Treatment"].fillna("Less (−)")
+_af["Amount (R)"] = pd.to_numeric(_af["Amount (R)"], errors="coerce").fillna(0.0)
+
+def _afford_sum(treatment):
+    rows = _af[_af["Treatment"] == treatment]
+    return float(rows["Amount (R)"].sum()) if not rows.empty else 0.0
+
+base_npat  = _afford_sum("NPAT (base)")
+addbacks   = _afford_sum("Add back (+)")
+deductions = _afford_sum("Less (−)")
+available  = base_npat + addbacks                       # cash available for debt service
+surplus    = available - deductions                     # surplus / (shortfall)
+coverage   = (available / deductions) if deductions else None
+
+def _fmt(v): return f"R {v:,.0f}"
+
+_has_afford_data = (base_npat != 0) or (deductions != 0) or (addbacks != 0)
+
+if _has_afford_data:
+    if surplus > 0:
+        s_color, s_label = "#16a34a", "SURPLUS"
+    elif surplus < 0:
+        s_color, s_label = "#dc2626", "SHORTFALL"
+    else:
+        s_color, s_label = "#f59e0b", "BREAK-EVEN"
+    cov_txt = f"{coverage:.2f}x" if coverage is not None else "n/a"
+
+    st.markdown(f"""
+    <div style="background:#0a1628;border:1px solid #1e3050;border-top:2px solid #c9a84c;border-radius:4px;padding:1.1rem 1.5rem;margin-top:0.75rem;">
+      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center;">
+        <div style="flex:1;min-width:120px;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.1em;color:#8a9ab5;text-transform:uppercase;">NPAT (Base)</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#f5f0e8;font-weight:700;">{_fmt(base_npat)}</div>
+        </div>
+        <div style="flex:1;min-width:120px;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.1em;color:#22c55e;text-transform:uppercase;">+ Add-backs</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#f5f0e8;font-weight:700;">{_fmt(addbacks)}</div>
+        </div>
+        <div style="flex:1;min-width:120px;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.1em;color:#f87171;text-transform:uppercase;">− Deductions</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#f5f0e8;font-weight:700;">{_fmt(deductions)}</div>
+        </div>
+        <div style="flex:1.5;min-width:180px;border-left:1px solid #1e3050;padding-left:1.5rem;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.1em;color:#c9a84c;text-transform:uppercase;">Surplus / (Shortfall)</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.35rem;color:{s_color};font-weight:700;">{_fmt(surplus)}
+            <span style="background:{s_color};color:#fff;font-family:'IBM Plex Mono',monospace;font-size:0.55rem;font-weight:600;letter-spacing:0.08em;padding:0.12rem 0.5rem;border-radius:2px;margin-left:0.4rem;vertical-align:middle;">{s_label}</span>
+          </div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#8a9ab5;margin-top:0.15rem;">Debt-service coverage: {cov_txt}</div>
+        </div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    st.caption("Affordability not assessed — enter an NPAT figure and deductions above, or leave blank to skip.")
+
+st.session_state.afford_summary = {
+    "line_items": _af.to_dict(orient="records"),
+    "npat_base": base_npat,
+    "add_backs": addbacks,
+    "deductions": deductions,
+    "cash_available_for_debt_service": available,
+    "surplus_or_shortfall": surplus,
+    "coverage_ratio": round(coverage, 2) if coverage is not None else None,
+    "verdict": (s_label if _has_afford_data else "Not assessed"),
+    "assessed": _has_afford_data,
+}
 
 st.markdown('<hr class="gold-divider">', unsafe_allow_html=True)
 
@@ -512,7 +611,7 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     fund_amounts    = c2.text_area("Amount (ZAR, one per line)", height=140,
         placeholder="1,200,000\n500,000\n85,000\n57,000\n200,000")
     fund_funded_by  = c3.text_area("Funded By (one per line)", height=140,
-        placeholder="ScaleForce\nScaleForce\nScaleForce\nScaleForce\nEntrepreneur")
+        placeholder="Inland Fund\nInland Fund\nInland Fund\nInland Fund\nEntrepreneur")
 
     cost_benefit    = st.text_area("Cost-Benefit Analysis / ROI Commentary (if applicable)", height=70,
         placeholder="E.g. new equipment expected to increase capacity by 30%, generating R400k additional monthly revenue…")
@@ -545,22 +644,20 @@ with st.form("fact_sheet_form", clear_on_submit=False):
                             "6 months", "7 months", "8 months", "9 months", "10 months",
                             "11 months", "12 months"]
 
-    # Management accounts as-at date + months (kept above the table, compact)
     ma1, ma2 = st.columns([1, 3])
     mgt_months  = ma1.selectbox("Mgt Accounts — Months Reported", _month_count_options,
                                 index=2, help="How many months of the current year the management accounts cover")
     mgt_as_at   = ma2.text_input("Mgt Accounts As-At Date", placeholder="e.g. 31 August 2025")
 
-    # ── Income Statement — dropdowns sit IN the header row, in line with Line Item ──
     st.markdown("**Income Statement**")
     c0, c1, c2, c3 = st.columns([2,2,2,2])
-    c0.markdown("<div style='padding-top:0.55rem;font-style:italic;color:#1d4ed8;font-weight:500;'>Line Item</div>", unsafe_allow_html=True)
+    c0.markdown("<div style='padding-top:0.55rem;font-style:italic;color:#e8c97a;font-weight:500;'>Line Item</div>", unsafe_allow_html=True)
     fy_period_1 = c1.selectbox("Period 1", _fy_options, index=_fy_options.index("FY2024"),
                                label_visibility="collapsed", key="fy_p1")
     fy_period_2 = c2.selectbox("Period 2", _fy_options, index=_fy_options.index("FY2025"),
                                label_visibility="collapsed", key="fy_p2")
     _mgt_label = f"Mgt Accs ({mgt_months})"
-    c3.markdown(f"<div style='padding-top:0.55rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
+    c3.markdown(f"<div style='padding-top:0.55rem;font-style:italic;color:#e8c97a;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
 
     revenue_2024 = c1.number_input("Revenue P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("revenue_p1", 0.0))
     revenue_2025    = c2.number_input("Revenue P2",   min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("revenue_p2", 0.0))
@@ -582,7 +679,6 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     np_mgt          = c3.number_input("NP Mgt",  step=1000.0, format="%.0f", label_visibility="collapsed")
     c0.markdown("Net Profit")
 
-    # Derived margins
     gp_margin_2024 = (gp_2024 / revenue_2024 * 100) if revenue_2024 else 0
     gp_margin_2025 = (gp_2025 / revenue_2025 * 100) if revenue_2025 else 0
     np_margin_2024 = (np_2024 / revenue_2024 * 100) if revenue_2024 else 0
@@ -591,13 +687,12 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     income_stmt_notes = st.text_area("Income Statement — Trend & Anomaly Notes", height=80,
         placeholder="Note any line items that look inconsistent year-on-year. Flag anything requiring further DD…")
 
-    # Balance Sheet Ratios
     st.markdown("**Balance Sheet Inputs**")
     c0, c1, c2, c3 = st.columns([2,2,2,2])
-    c0.markdown("<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>Line Item</div>", unsafe_allow_html=True)
-    c1.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{fy_period_1}</div>", unsafe_allow_html=True)
-    c2.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{fy_period_2}</div>", unsafe_allow_html=True)
-    c3.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#1d4ed8;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
+    c0.markdown("<div style='padding-top:0.15rem;font-style:italic;color:#e8c97a;font-weight:500;'>Line Item</div>", unsafe_allow_html=True)
+    c1.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#e8c97a;font-weight:500;'>{fy_period_1}</div>", unsafe_allow_html=True)
+    c2.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#e8c97a;font-weight:500;'>{fy_period_2}</div>", unsafe_allow_html=True)
+    c3.markdown(f"<div style='padding-top:0.15rem;font-style:italic;color:#e8c97a;font-weight:500;'>{_mgt_label}</div>", unsafe_allow_html=True)
 
     curr_assets_2024  = c1.number_input("CA P1", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ca_p1", 0.0))
     curr_assets_2025  = c2.number_input("CA P2", min_value=0.0, step=1000.0, format="%.0f", label_visibility="collapsed", value=_fe.get("ca_p2", 0.0))
@@ -627,14 +722,12 @@ with st.form("fact_sheet_form", clear_on_submit=False):
     # ── SECTION 6: Bank Statement Analysis ───────────────────────────────────
     st.markdown('<div class="section-label">06 · Bank Statement Analysis</div>', unsafe_allow_html=True)
 
-    # Pull AI analysis defaults if available
     _ba = st.session_state.get("bank_analysis") or {}
     if _ba:
         st.markdown('<div class="helper-tip">✅ Fields below pre-filled by AI analysis. Review and adjust before submitting.</div>', unsafe_allow_html=True)
     else:
         st.markdown('<div class="helper-tip">💡 Typically cover 3–6 months. Note RDs, unusual debits, overdraft usage, and cash flow patterns. (Or use the AI analyser above to auto-fill.)</div>', unsafe_allow_html=True)
 
-    # Determine default month selection
     _month_options = ["1", "2", "3", "4", "5", "6", "12", "Not yet received"]
     _ai_months = str(_ba.get("months_reviewed", "")).strip()
     _month_index = _month_options.index(_ai_months) if _ai_months in _month_options else 5
@@ -705,7 +798,6 @@ if submitted:
         st.error("Please enter the Business Name before submitting.")
         st.stop()
 
-    # ── Parse use-of-funds table ───────────────────────────────────────────────
     fi_lines  = [l.strip() for l in fund_items.strip().splitlines()   if l.strip()]
     fa_lines  = [l.strip() for l in fund_amounts.strip().splitlines() if l.strip()]
     fb_lines  = [l.strip() for l in fund_funded_by.strip().splitlines() if l.strip()]
@@ -716,7 +808,6 @@ if submitted:
         funder = fb_lines[i] if i < len(fb_lines) else ""
         fund_rows.append({"item": item, "amount": amt, "funded_by": funder})
 
-    # ── Derived ratios (auto-calculate for all periods) ───────────────────────
     def safe_ratio(n, d): return round(n/d, 2) if d else None
 
     ratios = {
@@ -732,7 +823,6 @@ if submitted:
         "np_margin_2025": round(np_margin_2025, 1),
     }
 
-    # ── Quick risk flags ───────────────────────────────────────────────────────
     flags = []
     if ratios["current_ratio_2025"] and ratios["current_ratio_2025"] < 1.0:
         flags.append(("CRITICAL", f"Current ratio below 1.0 in {fy_period_2} — cannot cover short-term obligations"))
@@ -749,6 +839,11 @@ if submitted:
     if years_in_business < 2:
         flags.append(("HIGH", "Business < 2 years old — limited track record"))
 
+    # Affordability shortfall flag
+    _afford = st.session_state.get("afford_summary", {})
+    if _afford.get("assessed") and _afford.get("surplus_or_shortfall", 0) < 0:
+        flags.append(("HIGH", "Affordability shortfall — NPAT (after add-backs) does not cover the proposed installment and royalty"))
+
     if flags:
         st.markdown("---")
         st.markdown("**🚩 Auto-detected Risk Flags**")
@@ -756,7 +851,6 @@ if submitted:
             icon = {"CRITICAL":"⛔","HIGH":"🔴","MEDIUM":"🟡"}.get(sev,"•")
             st.markdown(f"{icon} **{sev}** — {msg}")
 
-    # ── Build payload for Claude ───────────────────────────────────────────────
     payload = {
         "deal_date": datetime.today().strftime("%d %B %Y"),
         "business_name": business_name,
@@ -780,6 +874,7 @@ if submitted:
         "why_funding_best_option": why_funding_best,
         "total_funding_required": total_funding_required,
         "use_of_funds": fund_rows,
+        "affordability": st.session_state.get("afford_summary", {}),
         "cost_benefit_commentary": cost_benefit,
         "revenue_streams": revenue_streams,
         "payment_terms": payment_terms,
@@ -893,6 +988,18 @@ Include: Current Ratio (≥1.5), Debt/Equity (≤2.0x)
 
 Comment on balance sheet trends and flag anomalies.
 
+### 5.3 Affordability Assessment
+Using the "affordability" data, assess whether the business can service the proposed facility from current earnings.
+First present the calculation as a table exactly reflecting the line items and their treatment (NPAT base, add-backs, deductions):
+| Item | Treatment | Amount (R) |
+Then present the summary calculation clearly:
+- Net Profit After Tax (NPAT), latest period
+- Add: any add-backs (non-cash / non-recurring items)
+- = Cash available for debt service
+- Less: Loan installment, royalty and any other deductions
+- = **Surplus / (Shortfall)**
+State the surplus or shortfall figure explicitly and the debt-service coverage ratio (coverage_ratio). Interpret it: a surplus with coverage comfortably above 1.0x indicates the facility is affordable; a shortfall (coverage below 1.0x) is a serious concern requiring restructuring or decline. If the affordability data was not provided (i.e. "assessed" is false or all figures are zero), state clearly that an affordability assessment was not completed and must be obtained before credit committee sign-off.
+
 ## 6. BANK STATEMENT ANALYSIS
 Summarise findings: monthly credit average vs declared revenue, RDs noted (frequency, severity), overdraft usage, unusual transactions, cash flow consistency. Give an overall bank statement health rating.
 
@@ -910,7 +1017,7 @@ Present all identified risks (auto-flagged + your own analysis) in a structured 
 List every open item that must be resolved before credit committee sign-off. Format as a numbered checklist.
 
 ## 11. ANALYST ASSESSMENT & RECOMMENDATION
-State the analyst's preliminary view clearly. Provide a concise 4–6 sentence rationale covering: business quality, financial strength, deal structure, security, and key risks. If recommending approval, suggest deal terms (amount, tenor, rate basis, security required)."""
+State the analyst's preliminary view clearly. Provide a concise 4–6 sentence rationale covering: business quality, financial strength, deal structure, affordability, security, and key risks. If recommending approval, suggest deal terms (amount, tenor, rate basis, security required)."""
 
     # ── Load API key ──────────────────────────────────────────────────────────
     try:
@@ -946,7 +1053,7 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
         # ── For clients: clear the output display (they should not see the memo)
         if _is_client:
             output_placeholder.empty()
-            
+
         # ── Branded PDF generation ──────────────────────────────────────────────
         pdf_bytes = None
         if not _is_client:
@@ -970,85 +1077,84 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
                     with open(pdf_path, "rb") as f:
                         pdf_bytes = f.read()
             except Exception as e:
-                st.warning(f"⚠️ Branded PDF generation failed: {e} — other download formats still available below.")   
-            
+                st.warning(f"⚠️ Branded PDF generation failed: {e} — other download formats still available below.")
+
         # ── Email delivery ────────────────────────────────────────────────────
-        subject = f"[ScaleForce] Deal Assessment — {business_name} — {datetime.today().strftime('%d %b %Y')}"
+        subject = f"[Inland Fund] Deal Assessment — {business_name} — {datetime.today().strftime('%d %b %Y')}"
         email_sent = send_memo_email(subject, full_output, business_name, "Deal Fact Sheet Assessment")
         if email_sent:
             st.success("✅ Assessment emailed to the Inland Fund team inbox.")
 
-        # ── Download buttons — multiple formats ───────────────────────────────
+        # ── Download buttons — multiple formats (team only) ───────────────────
         if not _is_client:
             st.markdown("**Download Assessment:**")
             dl1, dl2, dl3, dl4 = st.columns(4)
 
-        dl1.download_button(
-            label="⬇  Download as .txt",
-            data=full_output,
-            file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.txt",
-            mime="text/plain",
-            use_container_width=True,
-            help="Opens in Notepad on any Windows PC"
-        )
+            dl1.download_button(
+                label="⬇  Download as .txt",
+                data=full_output,
+                file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.txt",
+                mime="text/plain",
+                use_container_width=True,
+                help="Opens in Notepad on any Windows PC"
+            )
 
-        dl2.download_button(
-            label="⬇  Download as .md",
-            data=full_output,
-            file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.md",
-            mime="text/markdown",
-            use_container_width=True,
-            help="Use with Notion, Obsidian or VS Code"
-        )
+            dl2.download_button(
+                label="⬇  Download as .md",
+                data=full_output,
+                file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.md",
+                mime="text/markdown",
+                use_container_width=True,
+                help="Use with Notion, Obsidian or VS Code"
+            )
 
-        html_output = f"""<!DOCTYPE html>
+            html_output = f"""<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
-<title>ScaleForce — {business_name}</title>
+<title>Inland Fund — {business_name}</title>
 <style>
 body{{font-family:Arial,sans-serif;max-width:900px;margin:3rem auto;padding:2rem;color:#1a1a1a;line-height:1.7}}
-h1{{color:#e8610a;border-bottom:3px solid #e8610a;padding-bottom:0.5rem}}
-h2{{color:#e8610a;border-bottom:2px solid #e8610a;padding-bottom:0.3rem;font-size:1rem;letter-spacing:0.1em;text-transform:uppercase;margin-top:2rem}}
-h3{{color:#1d4ed8}}
+h1{{color:#0a1628;border-bottom:3px solid #c9a84c;padding-bottom:0.5rem}}
+h2{{color:#0a1628;border-bottom:2px solid #c9a84c;padding-bottom:0.3rem;font-size:1rem;letter-spacing:0.1em;text-transform:uppercase;margin-top:2rem}}
+h3{{color:#8a6d1b}}
 table{{width:100%;border-collapse:collapse;margin:1rem 0}}
-th{{background:#fff4ee;color:#e8610a;padding:0.5rem 0.8rem;text-align:left;border:1px solid #fcd9c4;font-size:0.85rem}}
+th{{background:#0a1628;color:#c9a84c;padding:0.5rem 0.8rem;text-align:left;border:1px solid #1e3050;font-size:0.85rem}}
 td{{padding:0.45rem 0.8rem;border:1px solid #dde1e8}}
-tr:nth-child(even) td{{background:#f8f9fb}}
-.hdr{{background:#fff7f2;border-top:4px solid #e8610a;padding:1.5rem 2rem;margin-bottom:2rem;border-radius:4px}}
+tr:nth-child(even) td{{background:#f6f4ef}}
+.hdr{{background:#0a1628;border-top:4px solid #c9a84c;padding:1.5rem 2rem;margin-bottom:2rem;border-radius:4px}}
 .ftr{{color:#aaa;font-size:0.75rem;text-align:center;border-top:1px solid #ddd;margin-top:3rem;padding-top:1rem}}
 </style></head><body>
 <div class="hdr">
-<p style="color:#e8610a;font-size:0.7rem;letter-spacing:0.2em;text-transform:uppercase;margin:0 0 0.3rem">Inland Fund · Deal Fact Sheet</p>
-<h1 style="margin:0 0 0.25rem;font-size:1.6rem">{business_name}</h1>
-<p style="color:#555;font-size:0.85rem;margin:0">Generated: {datetime.today().strftime('%d %B %Y at %H:%M')}</p>
+<p style="color:#c9a84c;font-size:0.7rem;letter-spacing:0.2em;text-transform:uppercase;margin:0 0 0.3rem">Inland Fund · Deal Fact Sheet</p>
+<h1 style="margin:0 0 0.25rem;font-size:1.6rem;color:#ffffff;border:none;padding:0">{business_name}</h1>
+<p style="color:#b8c8de;font-size:0.85rem;margin:0">Generated: {datetime.today().strftime('%d %B %Y at %H:%M')}</p>
 </div>
 <pre style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:0.92rem">{full_output}</pre>
 <div class="ftr">Inland Fund · Confidential · AI-assisted — requires analyst review</div>
 </body></html>"""
 
-        dl3.download_button(
-            label="⬇  Download as .html",
-            data=html_output,
-            file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.html",
-            mime="text/html",
-            use_container_width=True,
-            help="Opens in browser — print to PDF via File > Print > Save as PDF"
-        )
-        
-        if pdf_bytes:
-            dl4.download_button(
-                label="⬇  Download Branded PDF",
-                data=pdf_bytes,
-                file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf",
+            dl3.download_button(
+                label="⬇  Download as .html",
+                data=html_output,
+                file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.html",
+                mime="text/html",
                 use_container_width=True,
-                help="Navy/gold branded PDF with charts — ready to send to credit committee"
+                help="Opens in browser — print to PDF via File > Print > Save as PDF"
             )
 
-        st.caption("💡 Tip: The .html file gives the best view and can be printed to PDF from your browser (File → Print → Save as PDF)")
+            if pdf_bytes:
+                dl4.download_button(
+                    label="⬇  Download Branded PDF",
+                    data=pdf_bytes,
+                    file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    help="Navy/gold branded PDF with charts — ready to send to credit committee"
+                )
+
+            st.caption("💡 Tip: The .html file gives the best view and can be printed to PDF from your browser (File → Print → Save as PDF)")
 
         # ── Client thank-you (shown when accessed via token URL) ──────────────
-        params = st.query_params
-        if params.get("token"):
+        if _is_client:
             st.markdown("""
             <div style="background:#f0fdf4; border:1px solid #86efac; border-top:3px solid #16a34a;
                         border-radius:6px; padding:2.5rem; text-align:center; margin-top:2rem;">
@@ -1062,7 +1168,7 @@ tr:nth-child(even) td{{background:#f8f9fb}}
                 </p>
                 <p style="color:#888; font-size:0.8rem; margin-top:1.5rem;">
                     Questions? Contact us at
-                    <a href="mailto:info@inlandfund.co.za" style="color:#e8610a;">
+                    <a href="mailto:info@inlandfund.co.za" style="color:#c9a84c;">
                         info@inlandfund.co.za
                     </a>
                 </p>
