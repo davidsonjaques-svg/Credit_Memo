@@ -58,7 +58,7 @@ def require_team_login():
     col = st.columns([1, 2, 1])[1]
     with col:
         pwd = st.text_input("Team Password", type="password", placeholder="Enter password…")
-        if st.button("Access Suite", use_container_width=True):
+        if st.button("Access Suite", width="stretch"):
             try:
                 correct = get_secret("TEAM_PASSWORD")
             except Exception:

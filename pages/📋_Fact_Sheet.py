@@ -257,7 +257,7 @@ with bank_col1:
     )
 with bank_col2:
     st.markdown("<div style='height:1.8rem'></div>", unsafe_allow_html=True)
-    analyse_clicked = st.button("🔍  Analyse Statements", use_container_width=True, key="analyse_btn")
+    analyse_clicked = st.button("🔍  Analyse Statements", width="stretch", key="analyse_btn")
 
 if analyse_clicked:
     if not uploaded_statements:
@@ -368,7 +368,7 @@ with fin_col1:
     )
 with fin_col2:
     st.markdown("<div style='height:1.8rem'></div>", unsafe_allow_html=True)
-    extract_fin_clicked = st.button("🔍  Extract Financials", use_container_width=True, key="extract_fin_btn")
+    extract_fin_clicked = st.button("🔍  Extract Financials", width="stretch", key="extract_fin_btn")
 
 if extract_fin_clicked:
     if not uploaded_financials:
@@ -447,7 +447,7 @@ if "afford_table" not in st.session_state:
 afford_edited = st.data_editor(
     st.session_state.afford_table,
     num_rows="dynamic",
-    use_container_width=True,
+    width="stretch",
     key="afford_editor",
     column_config={
         "Item": st.column_config.TextColumn("Item", width="large",
@@ -788,7 +788,7 @@ with st.form("fact_sheet_form", clear_on_submit=False):
         "Decline – Key Risks Identified",
     ])
 
-    submitted = st.form_submit_button("⚡  GENERATE DEAL ASSESSMENT", use_container_width=True)
+    submitted = st.form_submit_button("⚡  GENERATE DEAL ASSESSMENT", width="stretch")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # POST-SUBMIT
@@ -1034,7 +1034,7 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
     try:
         with client.messages.stream(
             model="claude-sonnet-4-5",
-            max_tokens=4500,
+            max_tokens=16000,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         ) as stream:
@@ -1044,6 +1044,12 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
                     f'<div class="output-container">{full_output}</div>',
                     unsafe_allow_html=True
                 )
+            _final = stream.get_final_message()
+
+        # Never let a cut-off report pass silently
+        if _final.stop_reason == "max_tokens" and not _is_client:
+            st.warning("⚠️ The assessment hit the output limit and was cut off — later sections may be "
+                       "missing. Regenerate, or shorten the free-text inputs.")
 
         output_placeholder.markdown(
             f'<div class="output-container">{full_output}</div>',
@@ -1095,7 +1101,7 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
                 data=full_output,
                 file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.txt",
                 mime="text/plain",
-                use_container_width=True,
+                width="stretch",
                 help="Opens in Notepad on any Windows PC"
             )
 
@@ -1104,7 +1110,7 @@ State the analyst's preliminary view clearly. Provide a concise 4–6 sentence r
                 data=full_output,
                 file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.md",
                 mime="text/markdown",
-                use_container_width=True,
+                width="stretch",
                 help="Use with Notion, Obsidian or VS Code"
             )
 
@@ -1137,7 +1143,7 @@ tr:nth-child(even) td{{background:#f6f4ef}}
                 data=html_output,
                 file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.html",
                 mime="text/html",
-                use_container_width=True,
+                width="stretch",
                 help="Opens in browser — print to PDF via File > Print > Save as PDF"
             )
 
@@ -1147,7 +1153,7 @@ tr:nth-child(even) td{{background:#f6f4ef}}
                     data=pdf_bytes,
                     file_name=f"FactSheet_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.pdf",
                     mime="application/pdf",
-                    use_container_width=True,
+                    width="stretch",
                     help="Navy/gold branded PDF with charts — ready to send to credit committee"
                 )
 

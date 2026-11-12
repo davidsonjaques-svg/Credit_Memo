@@ -367,7 +367,7 @@ if deals:
     if "deal_value" in df_display.columns:
         df_display["deal_value"] = df_display["deal_value"].apply(fmt_zar)
     df_display.columns = [c.replace("_"," ").title() for c in df_display.columns]
-    st.dataframe(df_display, use_container_width=True, hide_index=True)
+    st.dataframe(df_display, width="stretch", hide_index=True)
 
     csv = df.to_csv(index=False)
     st.download_button("⬇ Export Pipeline as CSV", data=csv,

@@ -148,7 +148,7 @@ with st.container():
     client_email = c2.text_input("Client Email Address *",  placeholder="e.g. john@acme.co.za")
     expiry_hours = c3.selectbox("Expires In", [24, 48, 72, 120, 168], index=2,
                                 format_func=lambda x: f"{x//24} day{'s' if x//24>1 else ''}")
-    generate = st.button("⚡  Generate Secure Link", use_container_width=False)
+    generate = st.button("⚡  Generate Secure Link", width="content")
     st.markdown('</div>', unsafe_allow_html=True)
 
 if generate:
@@ -215,7 +215,7 @@ else:
     fc1, fc2, fc3 = st.columns([2, 2, 1])
     filter_by  = fc1.selectbox("Filter", ["All", "Active", "Used", "Expired"], label_visibility="collapsed")
     search     = fc2.text_input("Search", placeholder="Search client name…", label_visibility="collapsed")
-    if fc3.button("🗑 Purge Old", use_container_width=True, help="Remove all used and expired links"):
+    if fc3.button("🗑 Purge Old", width="stretch", help="Remove all used and expired links"):
         st.session_state.token_store = {
             t: r for t, r in tokens.items() if token_status(r) == "active"
         }

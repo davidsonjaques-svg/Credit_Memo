@@ -372,7 +372,7 @@ with st.form("credit_form", clear_on_submit=False):
     st.markdown('<div class="section-label">09 · Additional Context</div>', unsafe_allow_html=True)
     additional_notes = st.text_area("Any other relevant information, risks, or mitigants", height=80)
 
-    submitted = st.form_submit_button("⚡  GENERATE CREDIT MEMO", use_container_width=True)
+    submitted = st.form_submit_button("⚡  GENERATE CREDIT MEMO", width="stretch")
 
 # ── Post-submit processing ────────────────────────────────────────────────────
 if submitted:
@@ -641,7 +641,7 @@ Provide your rationale in 3–5 sentences. Include suggested deal structure if a
             data=full_memo,
             file_name=f"CreditMemo_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.txt",
             mime="text/plain",
-            use_container_width=True,
+            width="stretch",
             help="Opens in Notepad on any Windows PC"
         )
 
@@ -650,7 +650,7 @@ Provide your rationale in 3–5 sentences. Include suggested deal structure if a
             data=full_memo,
             file_name=f"CreditMemo_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.md",
             mime="text/markdown",
-            use_container_width=True,
+            width="stretch",
             help="Use with Notion, Obsidian or VS Code"
         )
 
@@ -683,7 +683,7 @@ tr:nth-child(even) td{{background:#f8f9fb}}
             data=html_memo,
             file_name=f"CreditMemo_{business_name.replace(' ','_')}_{datetime.today().strftime('%Y%m%d')}.html",
             mime="text/html",
-            use_container_width=True,
+            width="stretch",
             help="Opens in browser — print to PDF via File > Print > Save as PDF"
         )
 
