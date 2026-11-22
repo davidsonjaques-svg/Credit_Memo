@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/* ScaleForce Capital house style, carried over from the Deal Suite demo */
+@theme inline {
+  --color-navy: #0a1628;
+  --color-navy-2: #1c2c47;
+  --color-navy-line: #2b3b57;
+  --color-gold: #c9a84c;
+  --color-gold-ink: #6b5310;
+  --color-gold-tint: #f6eed8;
+  --color-sand: #f4f2ec;
+  --color-sand-2: #ece9e0;
+  --color-line: #e2ded3;
+  --color-ink: #0a1628;
+  --color-muted: #5b6474;
+  --color-slate: #3a4b66;
+  --color-mist: #b8c1d1;
+  --color-zoho: #1a4f8f;
+  --color-zoho-tint: #e7effa;
+  --color-ok: #1d6040;
+  --color-ok-tint: #e6f2eb;
+  --color-warn: #7a4e00;
+  --color-warn-tint: #fbf1dc;
+  --color-bad: #9b2c2c;
+  --color-bad-tint: #fbe9e9;
+  --font-sans: "Inter Variable", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+body {
+  background: var(--color-sand);
+  color: var(--color-ink);
+}
