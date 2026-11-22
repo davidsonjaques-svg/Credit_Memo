@@ -202,11 +202,19 @@ def test_rls_blocks_other_orgs_and_anon(db):
                   "'22222222-2222-2222-2222-222222222222' from orgs where name='Lender X' on conflict do nothing")
         total = c.execute("select count(*) from deals").fetchone()[0]
         assert total > 0
-        def seen(role, sub):
+        def seen(role, sub, aal="aal2", sql="select count(*) from v_pipeline"):
             with c.transaction():
                 c.execute(f"set local role {role}")
                 c.execute("select set_config('request.jwt.claim.sub', %s, true)", (sub,))
-                return c.execute("select count(*) from v_pipeline").fetchone()[0]
-        assert seen("authenticated", "11111111-1111-1111-1111-111111111111") == total
+                c.execute("select set_config('request.jwt.claims', %s, true)",
+                          (f'{{"sub": "{sub}", "aal": "{aal}"}}' if sub else "",))
+                return c.execute(sql).fetchone()[0]
+        jaques = "11111111-1111-1111-1111-111111111111"
+        assert seen("authenticated", jaques) == total
         assert seen("authenticated", "22222222-2222-2222-2222-222222222222") == 0
         assert seen("anon", "") == 0
+        # Two-factor: a password-only (aal1) session sees nothing
+        assert seen("authenticated", jaques, aal="aal1") == 0
+        # Web-app edits are attributed to the member linked to the Auth user
+        member = c.execute("select id from members where full_name='Jaques Davidson'").fetchone()[0]
+        assert seen("authenticated", jaques, sql="select current_member()") == member

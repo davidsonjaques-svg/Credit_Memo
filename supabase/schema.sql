@@ -43,15 +43,24 @@ create table if not exists members (
 );
 
 -- Org of the signed-in Supabase Auth user (phase 2 RLS)
+-- Only once the session has passed two-factor (aal2), so a password-only
+-- session sees nothing even through the public API.
 create or replace function current_org() returns uuid
 language sql stable security definer set search_path = public as $$
-  select org_id from members where user_id = auth.uid()
+  select org_id from members
+  where user_id = auth.uid()
+    and active
+    and coalesce(auth.jwt() ->> 'aal', '') = 'aal2'
 $$;
 
--- Member acting in this transaction (the app sets app.member_id per transaction)
+-- Member acting in this transaction: the Streamlit app sets app.member_id per
+-- transaction; the web app falls back to the member linked to the Auth user.
 create or replace function current_member() returns uuid
-language sql stable as $$
-  select nullif(current_setting('app.member_id', true), '')::uuid
+language sql stable security definer set search_path = public as $$
+  select coalesce(
+    nullif(current_setting('app.member_id', true), '')::uuid,
+    (select id from members where user_id = auth.uid())
+  )
 $$;
 
 create or replace function touch_updated_at() returns trigger
