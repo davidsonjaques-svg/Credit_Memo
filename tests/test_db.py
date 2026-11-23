@@ -29,6 +29,7 @@ def db():
         c.execute((ROOT / "tests/supabase_stub.sql").read_text())
         c.execute((ROOT / "supabase/schema.sql").read_text())
         c.execute((ROOT / "supabase/bootstrap.sql").read_text())
+        c.execute((ROOT / "supabase/phase1.sql").read_text())
     os.environ["DATABASE_URL"] = URL
     import streamlit as st
     st.cache_data.clear(); st.cache_resource.clear()
@@ -218,3 +219,65 @@ def test_rls_blocks_other_orgs_and_anon(db):
         # Web-app edits are attributed to the member linked to the Auth user
         member = c.execute("select id from members where full_name='Jaques Davidson'").fetchone()[0]
         assert seen("authenticated", jaques, sql="select current_member()") == member
+
+
+def test_phase1_seeds_and_rerun(db):
+    import psycopg
+    with db.tx() as cur:
+        cur.execute("select name from funders where org_id = (select id from orgs order by created_at limit 1) order by name")
+        names = [r["name"] for r in cur.fetchall()]
+        cur.execute("select code, fee_type, pct, min_fee from fee_structures "
+                    "where org_id = (select id from orgs order by created_at limit 1) order by sort")
+        structures = cur.fetchall()
+    assert {"Business Partners Limited", "Investec", "Merchant Capital", "GenFin", "Lulalend"} <= set(names)
+    assert len(names) == 7
+    assert [s["code"] for s in structures][:6] == ["property", "capital", "asset", "working", "acquisition", "readiness"]
+    assert float(structures[0]["pct"]) == 5 and float(structures[0]["min_fee"]) == 150000
+    # Safe to re-run: nothing duplicated
+    with psycopg.connect(URL, autocommit=True) as c:
+        c.execute((ROOT / "supabase/phase1.sql").read_text())
+    with db.tx() as cur:
+        cur.execute("select count(*) as n from (select org_id, lower(name) from funders group by 1, 2 having count(*) > 1) x")
+        assert cur.fetchone()["n"] == 0
+        cur.execute("select count(*) as n from funders group by org_id")
+        assert {r["n"] for r in cur.fetchall()} == {7}
+
+
+def test_phase1_fee_watch_and_audit(db):
+    deal_id = db.create_deal("Watchlist Logistics (Pty) Ltd", 10_000_000, stage="Lender Placement")
+    with db.tx() as cur:
+        cur.execute("select org_id from deals where id=%s", (deal_id,))
+        org = cur.fetchone()["org_id"]
+        cur.execute("select id from funders where name='Investec' and org_id=%s", (org,))
+        investec = cur.fetchone()["id"]
+        # Mandate signed 8.5 months ago: exclusivity (9 months) ends within 30 days
+        cur.execute("""insert into mandates (org_id, deal_id, structure_name, fee_type, pct, min_fee, milestones, signed_on)
+                       values (%s, %s, 'Property Finance', 'pct', 5, 150000,
+                               '[{"share":25,"trigger":"approval"},{"share":75,"trigger":"registration"}]',
+                               current_date - interval '8 months' - interval '15 days') returning id""", (org, deal_id))
+        mandate = cur.fetchone()["id"]
+        cur.execute("""insert into fees (org_id, deal_id, mandate_id, kind, description, share_pct, amount)
+                       values (%s,%s,%s,'milestone','approval',25,125000),(%s,%s,%s,'milestone','registration',75,375000)""",
+                    (org, deal_id, mandate, org, deal_id, mandate))
+        cur.execute("""insert into submissions (org_id, deal_id, funder_id, status, decision_on)
+                       values (%s, %s, %s, 'Approved', current_date - 3)""", (org, deal_id, investec))
+        cur.execute("select kind from v_fee_watch where deal_id=%s order by kind", (deal_id,))
+        kinds = [r["kind"] for r in cur.fetchall()]
+    assert kinds == ["exclusivity_ending", "not_invoiced"]
+
+    with db.tx() as cur:
+        cur.execute("update fees set invoiced_on = current_date - 10, invoice_ref='SFC-INV-2026-001' "
+                    "where deal_id=%s and share_pct=25", (deal_id,))
+        cur.execute("select kind from v_fee_watch where deal_id=%s order by kind", (deal_id,))
+        kinds = [r["kind"] for r in cur.fetchall()]
+        cur.execute("select action, detail from activity_log where deal_id=%s and action like 'fees.%%' order by id", (deal_id,))
+        audit = cur.fetchall()
+    assert kinds == ["exclusivity_ending", "overdue"]
+    assert [a["action"] for a in audit] == ["fees.insert", "fees.insert", "fees.update"]
+    assert audit[-1]["detail"]["fields"] == ["invoice_ref", "invoiced_on"]
+
+    # Withdrawn deal inside the tail is watched, not forgotten
+    db.update_deal(deal_id, stage="Closed", outcome="Withdrawn")
+    with db.tx() as cur:
+        cur.execute("select kind from v_fee_watch where deal_id=%s and kind='in_tail'", (deal_id,))
+        assert cur.fetchone() is not None

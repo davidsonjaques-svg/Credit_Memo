@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { OUTCOMES, STAGES, type Outcome, type Stage } from "@/lib/constants";
 import { getActor } from "@/lib/data";
+import { resolveFunder } from "@/lib/funder-resolve";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -69,6 +70,9 @@ export async function createDeal(_prev: FormState, f: FormData): Promise<FormSta
     }
   }
 
+  const funder = await resolveFunder(supabase, actor.orgId, text(f, "funderId"), text(f, "newFunder"));
+  if (funder.error) return { error: funder.error, ok: null };
+
   const { data: deal, error } = await supabase
     .from("deals")
     .insert({
@@ -76,7 +80,8 @@ export async function createDeal(_prev: FormState, f: FormData): Promise<FormSta
       client_id: client,
       deal_name: dealName,
       product: text(f, "product") || null,
-      funder: text(f, "funder") || null,
+      funder_id: funder.id,
+      funder: funder.name,
       funding_required: funding,
       stage,
       owner_id: ownerId,
@@ -140,6 +145,7 @@ const LABELS: Record<string, string> = {
   deal_name: "deal name",
   product: "product",
   funder: "funder",
+  funder_id: "funder",
   funding_required: "funding required",
   owner_id: "deal lead",
 };
@@ -153,18 +159,22 @@ export async function updateDetails(_prev: FormState, f: FormData): Promise<Form
   if (!text(f, "dealName")) return { error: "The deal needs a name.", ok: null };
   if (funding === null) return { error: "Funding required must be a number, in rand.", ok: null };
 
+  const supabase = await createClient();
+  const funder = await resolveFunder(supabase, actor.orgId, text(f, "funderId"), text(f, "newFunder"));
+  if (funder.error) return { error: funder.error, ok: null };
+
   const next: Record<string, string | number | null> = {
     deal_name: text(f, "dealName"),
     product: text(f, "product") || null,
-    funder: text(f, "funder") || null,
+    funder_id: funder.id,
+    funder: funder.name,
     funding_required: funding,
     owner_id: text(f, "ownerId") || null,
   };
 
-  const supabase = await createClient();
   const { data: before } = await supabase
     .from("deals")
-    .select("deal_name, product, funder, funding_required, owner_id")
+    .select("deal_name, product, funder_id, funder, funding_required, owner_id")
     .eq("id", dealId)
     .maybeSingle();
   if (!before) return { error: "That deal can't be found.", ok: null };
@@ -183,7 +193,7 @@ export async function updateDetails(_prev: FormState, f: FormData): Promise<Form
     org_id: actor.orgId,
     deal_id: dealId,
     action: "deal.updated",
-    detail: { fields: changed.map((k) => LABELS[k] ?? k) },
+    detail: { fields: [...new Set(changed.map((k) => LABELS[k] ?? k))] },
   });
 
   revalidatePath(`/deals/${dealId}`);

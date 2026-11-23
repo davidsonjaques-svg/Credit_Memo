@@ -55,6 +55,28 @@ Someone who signs in before being linked sees a "not linked yet" message rather 
 Lost phone? An admin deletes the person's factor in Supabase → Authentication → Users → the user →
 MFA factors. They set up a new one at their next sign-in.
 
+## Phase 1: funders, submissions, mandates and fees (one-off)
+
+Run **`supabase/phase1.sql`** in the SQL Editor (after `web_app_v2.sql`). It adds:
+
+- **Funders** (`/funders`): the panel (Business Partners Limited, Investec, Pegasus Capital, Tuhf,
+  Merchant Capital, GenFin, Lulalend) with appetite fields to fill in. Add a funder from the
+  Funders page, or on the fly from any funder dropdown ("New funder…").
+- **Submissions** on each deal: one row per funder, with status, terms and decision. Accepting
+  an approved offer places the deal with that funder.
+- **Mandate and fees** on each deal: pick the engagement letter structure (the same six as the
+  Engagement Letter Generator, plus the three diagnostic tiers from `pricing.yaml`). The fee lines
+  are created from its milestones, a commitment fee is set off against the first milestone, and
+  each line is marked invoiced and paid. New mandates default to `pricing.yaml`: R150,000 minimum
+  success fee, 9 months' exclusivity, 24-month fee-protection tail.
+- **Revenue watch** on the pipeline: approved but not invoiced, invoices past the 7-day term,
+  exclusivity ending within 30 days, and closed deals still inside the fee-protection tail.
+- **Automatic audit**: every change to funders, submissions, mandates, fees, clients and documents
+  is logged by the database, whichever app made it.
+
+Fee structures live in the `fee_structures` table; edit rates or milestones there (Supabase →
+Table Editor). Existing mandates keep the terms they were signed on.
+
 ## Run locally
 
 ```bash
