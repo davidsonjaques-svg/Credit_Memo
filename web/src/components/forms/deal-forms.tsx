@@ -10,6 +10,7 @@ import {
 } from "@/app/actions/deals";
 import { OUTCOMES, PRODUCTS, STAGES, type Stage } from "@/lib/constants";
 import { Field, FormMessage, Input, Select, Submit, TextArea } from "./fields";
+import { FunderPicker } from "./funder-picker";
 
 type Option = { id: string; label: string };
 const initial: FormState = { error: null, ok: null };
@@ -28,10 +29,12 @@ function ProductList() {
 export function NewDealForm({
   clients,
   team,
+  funders,
   me,
 }: {
   clients: Option[];
   team: Option[];
+  funders: Option[];
   me: string;
 }) {
   const [state, action] = useActionState(createDeal, initial);
@@ -70,9 +73,7 @@ export function NewDealForm({
           <Field label="Funding required (R)">
             <Input name="fundingRequired" inputMode="decimal" placeholder="18000000" required />
           </Field>
-          <Field label="Funder" hint="Leave blank until placed">
-            <Input name="funder" autoComplete="off" />
-          </Field>
+          <FunderPicker funders={funders} hint="Leave blank until placed" />
           <Field label="Opening stage">
             <Select name="stage" defaultValue="Lead">
               {STAGES.filter((s) => s !== "Closed").map((s) => (
@@ -168,16 +169,18 @@ export function DetailsForm({
   dealId,
   values,
   team,
+  funders,
 }: {
   dealId: string;
   values: {
     dealName: string;
     product: string | null;
-    funder: string | null;
+    funderId: string | null;
     fundingRequired: number;
     ownerId: string | null;
   };
   team: Option[];
+  funders: Option[];
 }) {
   const [state, action] = useActionState(updateDetails, initial);
   return (
@@ -198,9 +201,7 @@ export function DetailsForm({
             required
           />
         </Field>
-        <Field label="Funder">
-          <Input name="funder" defaultValue={values.funder ?? ""} />
-        </Field>
+        <FunderPicker funders={funders} defaultValue={values.funderId ?? ""} />
         <Field label="Deal lead">
           <Select name="ownerId" defaultValue={values.ownerId ?? ""}>
             <option value="">Unassigned</option>

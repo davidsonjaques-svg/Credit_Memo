@@ -1,7 +1,15 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 
-import { STAGES, OUTCOMES, PRODUCTS, type Stage, type Outcome } from "@/lib/constants";
+import {
+  STAGES,
+  OUTCOMES,
+  PRODUCTS,
+  type Milestone,
+  type Outcome,
+  type Stage,
+  type SubmissionStatus,
+} from "@/lib/constants";
 
 export { STAGES, OUTCOMES, PRODUCTS };
 export type { Stage, Outcome };
@@ -22,6 +30,7 @@ export type PipelineDeal = {
   client: string;
   product: string | null;
   funder: string | null;
+  funderId: string | null;
   fundingRequired: number;
   stage: Stage;
   outcome: string;
@@ -50,6 +59,7 @@ type PipelineRow = {
   client: string;
   product: string | null;
   funder: string | null;
+  funder_id: string | null;
   funding_required: number | string | null;
   stage: Stage;
   outcome: string;
@@ -72,6 +82,7 @@ function toDeal(r: PipelineRow): PipelineDeal {
     client: r.client,
     product: r.product,
     funder: r.funder,
+    funderId: r.funder_id,
     fundingRequired: Number(r.funding_required ?? 0),
     stage: r.stage,
     outcome: r.outcome,
@@ -112,7 +123,7 @@ export async function getPipeline(): Promise<PipelineDeal[]> {
   const { data, error } = await supabase
     .from("v_pipeline")
     .select(
-      "id, deal_ref, deal_name, client, product, funder, funding_required, stage, outcome, owner, owner_id, notes, days_in_stage, rating, risk_score, high_flags, run_count, updated_at",
+      "id, deal_ref, deal_name, client, product, funder, funding_required, stage, outcome, owner, owner_id, notes, days_in_stage, rating, risk_score, high_flags, run_count, updated_at, funder_id",
     )
     .order("updated_at", { ascending: false });
 
@@ -130,7 +141,7 @@ export async function getDeal(id: string): Promise<{
   const { data: row } = await supabase
     .from("v_pipeline")
     .select(
-      "id, deal_ref, deal_name, client, product, funder, funding_required, stage, outcome, owner, owner_id, notes, days_in_stage, rating, risk_score, high_flags, run_count, updated_at, last_run_id",
+      "id, deal_ref, deal_name, client, product, funder, funding_required, stage, outcome, owner, owner_id, notes, days_in_stage, rating, risk_score, high_flags, run_count, updated_at, last_run_id, funder_id",
     )
     .eq("id", id)
     .maybeSingle();
@@ -200,6 +211,24 @@ function describe(action: string, detail: Record<string, unknown> | null): strin
       const fields = Array.isArray(d.fields) ? (d.fields as string[]).join(", ") : "";
       return fields ? `Details updated: ${fields}` : "Details updated";
     }
+    case "submissions.insert":
+      return `Submission opened${d.status ? ` (${String(d.status)})` : ""}`;
+    case "submissions.update":
+      return d.status ? `Submission now ${String(d.status)}` : "Submission updated";
+    case "mandates.insert":
+      return `Mandate set up: ${String(d.name ?? "")}`.trim();
+    case "mandates.update":
+      return "Mandate terms updated";
+    case "fees.insert":
+      return `Fee line added: ${String(d.name ?? "")}`;
+    case "fees.update": {
+      const f = Array.isArray(d.fields) ? (d.fields as string[]) : [];
+      if (f.includes("paid_on")) return `Fee marked paid: ${String(d.name ?? "")}`;
+      if (f.includes("invoiced_on")) return `Fee invoiced: ${String(d.name ?? "")}`;
+      return `Fee updated: ${String(d.name ?? "")}`;
+    }
+    case "documents.insert":
+      return `Document added: ${String(d.name ?? "")}`;
     default:
       return humanise(action);
   }
@@ -238,4 +267,282 @@ export async function getClients(): Promise<ClientOption[]> {
   const supabase = await createClient();
   const { data } = await supabase.from("clients").select("id, legal_name").order("legal_name");
   return (data ?? []).map((c) => ({ id: c.id, legalName: c.legal_name }));
+}
+
+// ── Funders ─────────────────────────────────────────────────────────────────
+export type Funder = {
+  id: string;
+  name: string;
+  kind: string | null;
+  instruments: string[];
+  minAmount: number | null;
+  maxAmount: number | null;
+  minReadinessScore: number | null;
+  testsHardest: string | null;
+  requiredDocs: string[];
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  notes: string | null;
+  active: boolean;
+};
+
+type FunderRow = {
+  id: string;
+  name: string;
+  kind: string | null;
+  instruments: string[] | null;
+  min_amount: number | string | null;
+  max_amount: number | string | null;
+  min_readiness_score: number | null;
+  tests_hardest: string | null;
+  required_docs: string[] | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  notes: string | null;
+  active: boolean;
+};
+
+const num = (v: number | string | null) => (v === null || v === "" ? null : Number(v));
+
+function toFunder(r: FunderRow): Funder {
+  return {
+    id: r.id,
+    name: r.name,
+    kind: r.kind,
+    instruments: r.instruments ?? [],
+    minAmount: num(r.min_amount),
+    maxAmount: num(r.max_amount),
+    minReadinessScore: r.min_readiness_score,
+    testsHardest: r.tests_hardest,
+    requiredDocs: r.required_docs ?? [],
+    contactName: r.contact_name,
+    contactEmail: r.contact_email,
+    contactPhone: r.contact_phone,
+    notes: r.notes,
+    active: r.active,
+  };
+}
+
+const FUNDER_COLS =
+  "id, name, kind, instruments, min_amount, max_amount, min_readiness_score, tests_hardest, required_docs, contact_name, contact_email, contact_phone, notes, active";
+
+export async function getFunders(includeInactive = false): Promise<Funder[]> {
+  const supabase = await createClient();
+  let q = supabase.from("funders").select(FUNDER_COLS).order("name");
+  if (!includeInactive) q = q.eq("active", true);
+  const { data, error } = await q;
+  if (error) throw new Error(`Could not load funders: ${error.message}`);
+  return (data as FunderRow[]).map(toFunder);
+}
+
+export async function getFunder(id: string): Promise<Funder | null> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("funders").select(FUNDER_COLS).eq("id", id).maybeSingle();
+  return data ? toFunder(data as FunderRow) : null;
+}
+
+/** Deal counts per funder: placed deals and open submissions. */
+export async function getFunderActivity(): Promise<Record<string, { deals: number; submissions: number; approved: number }>> {
+  const supabase = await createClient();
+  const [{ data: deals }, { data: subs }] = await Promise.all([
+    supabase.from("deals").select("funder_id").not("funder_id", "is", null),
+    supabase.from("submissions").select("funder_id, status"),
+  ]);
+  const out: Record<string, { deals: number; submissions: number; approved: number }> = {};
+  const get = (id: string) => (out[id] ??= { deals: 0, submissions: 0, approved: 0 });
+  for (const d of deals ?? []) get(d.funder_id as string).deals += 1;
+  for (const s of subs ?? []) {
+    const a = get(s.funder_id as string);
+    a.submissions += 1;
+    if (s.status === "Approved") a.approved += 1;
+  }
+  return out;
+}
+
+// ── Fee structures, mandates, fees, submissions ─────────────────────────────
+export type FeeStructure = {
+  id: string;
+  code: string;
+  name: string;
+  feeType: "pct" | "fixed";
+  pct: number;
+  fixedAmount: number;
+  minFee: number;
+  capFee: number | null;
+  commitmentFee: number;
+  basis: string | null;
+  milestones: Milestone[];
+  feeProtection: boolean;
+};
+
+export async function getFeeStructures(): Promise<FeeStructure[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("fee_structures")
+    .select("id, code, name, fee_type, pct, fixed_amount, min_fee, cap_fee, commitment_fee, basis, milestones, fee_protection")
+    .eq("active", true)
+    .order("sort");
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    code: r.code,
+    name: r.name,
+    feeType: r.fee_type,
+    pct: Number(r.pct),
+    fixedAmount: Number(r.fixed_amount),
+    minFee: Number(r.min_fee),
+    capFee: num(r.cap_fee),
+    commitmentFee: Number(r.commitment_fee),
+    basis: r.basis,
+    milestones: (r.milestones ?? []) as Milestone[],
+    feeProtection: r.fee_protection,
+  }));
+}
+
+export type Mandate = {
+  id: string;
+  structureName: string;
+  feeType: "pct" | "fixed";
+  pct: number;
+  fixedAmount: number;
+  minFee: number;
+  capFee: number | null;
+  commitmentFee: number;
+  basisAmount: number | null;
+  feeProtection: boolean;
+  letterRef: string | null;
+  signedOn: string | null;
+  exclusivityMonths: number;
+  tailMonths: number;
+  terminatedOn: string | null;
+};
+
+export type FeeLine = {
+  id: string;
+  kind: string;
+  description: string;
+  amount: number;
+  invoiceRef: string | null;
+  invoicedOn: string | null;
+  paidOn: string | null;
+};
+
+export type Submission = {
+  id: string;
+  funderId: string;
+  funder: string;
+  status: SubmissionStatus;
+  submittedOn: string | null;
+  decisionOn: string | null;
+  amountOffered: number | null;
+  rate: string | null;
+  termMonths: number | null;
+  accepted: boolean;
+  notes: string | null;
+};
+
+export async function getCommercials(dealId: string): Promise<{
+  mandate: Mandate | null;
+  fees: FeeLine[];
+  submissions: Submission[];
+}> {
+  const supabase = await createClient();
+  const [m, f, s] = await Promise.all([
+    supabase
+      .from("mandates")
+      .select("id, structure_name, fee_type, pct, fixed_amount, min_fee, cap_fee, commitment_fee, basis_amount, fee_protection, letter_ref, signed_on, exclusivity_months, tail_months, terminated_on")
+      .eq("deal_id", dealId)
+      .maybeSingle(),
+    supabase
+      .from("fees")
+      .select("id, kind, description, amount, invoice_ref, invoiced_on, paid_on, sort")
+      .eq("deal_id", dealId)
+      .order("sort"),
+    supabase
+      .from("submissions")
+      .select("id, funder_id, status, submitted_on, decision_on, amount_offered, rate, term_months, accepted, notes, created_at, funders(name)")
+      .eq("deal_id", dealId)
+      .order("created_at"),
+  ]);
+
+  const r = m.data;
+  const mandate: Mandate | null = r
+    ? {
+        id: r.id,
+        structureName: r.structure_name,
+        feeType: r.fee_type,
+        pct: Number(r.pct),
+        fixedAmount: Number(r.fixed_amount),
+        minFee: Number(r.min_fee),
+        capFee: num(r.cap_fee),
+        commitmentFee: Number(r.commitment_fee),
+        basisAmount: num(r.basis_amount),
+        feeProtection: r.fee_protection,
+        letterRef: r.letter_ref,
+        signedOn: r.signed_on,
+        exclusivityMonths: r.exclusivity_months,
+        tailMonths: r.tail_months,
+        terminatedOn: r.terminated_on,
+      }
+    : null;
+
+  const fees: FeeLine[] = (f.data ?? []).map((x) => ({
+    id: x.id,
+    kind: x.kind,
+    description: x.description,
+    amount: Number(x.amount),
+    invoiceRef: x.invoice_ref,
+    invoicedOn: x.invoiced_on,
+    paidOn: x.paid_on,
+  }));
+
+  const submissions: Submission[] = (s.data ?? []).map((x) => {
+    const fu = Array.isArray(x.funders) ? x.funders[0] : x.funders;
+    return {
+      id: x.id,
+      funderId: x.funder_id,
+      funder: (fu as { name?: string } | null)?.name ?? "Funder",
+      status: x.status,
+      submittedOn: x.submitted_on,
+      decisionOn: x.decision_on,
+      amountOffered: num(x.amount_offered),
+      rate: x.rate,
+      termMonths: x.term_months,
+      accepted: x.accepted,
+      notes: x.notes,
+    };
+  });
+
+  return { mandate, fees, submissions };
+}
+
+export type FeeAlert = {
+  dealId: string;
+  dealRef: string;
+  client: string;
+  kind: "not_invoiced" | "overdue" | "exclusivity_ending" | "in_tail";
+  message: string;
+  since: string | null;
+  amount: number | null;
+};
+
+export async function getFeeWatch(): Promise<FeeAlert[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("v_fee_watch")
+    .select("deal_id, deal_ref, client, kind, message, since, amount");
+  if (error) return []; // phase1.sql not run yet
+  const order = { overdue: 0, not_invoiced: 1, exclusivity_ending: 2, in_tail: 3 } as const;
+  return (data ?? [])
+    .map((a) => ({
+      dealId: a.deal_id,
+      dealRef: a.deal_ref,
+      client: a.client,
+      kind: a.kind as FeeAlert["kind"],
+      message: a.message,
+      since: a.since,
+      amount: num(a.amount),
+    }))
+    .sort((a, b) => order[a.kind] - order[b.kind]);
 }

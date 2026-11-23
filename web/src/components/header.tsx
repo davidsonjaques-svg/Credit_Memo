@@ -13,11 +13,13 @@ export function Header() {
           <span className="border-l border-navy-line pl-2.5 text-[13px] text-mist">Deal Suite</span>
         </Link>
         <nav aria-label="Main" className="flex flex-wrap gap-1 text-sm">
-          <Link href="/" className="rounded-md bg-navy-2 px-3 py-2">
+          <Link href="/" className="rounded-md px-3 py-2 text-mist hover:bg-navy-2 hover:text-white">
             Pipeline
           </Link>
           <span className="px-3 py-2 text-mist" title="Coming in a later phase">Clients</span>
-          <span className="px-3 py-2 text-mist" title="Coming in Phase 4">Funders</span>
+          <Link href="/funders" className="rounded-md px-3 py-2 text-mist hover:bg-navy-2 hover:text-white">
+            Funders
+          </Link>
           <span className="px-3 py-2 text-mist" title="Coming in Phase 6">Inland Fund</span>
         </nav>
         <div className="flex-1" />

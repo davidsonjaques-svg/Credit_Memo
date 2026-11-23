@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { NewDealForm } from "@/components/forms/deal-forms";
 import { NotLinked } from "@/components/not-linked";
 import { Card, Skeleton } from "@/components/ui";
-import { getActor, getClients, getMember, getTeam } from "@/lib/data";
+import { getActor, getClients, getFunders, getMember, getTeam } from "@/lib/data";
 
 export default function NewDealPage() {
   return (
@@ -33,11 +33,12 @@ async function Form() {
   const { email, member } = await getMember();
   if (!member) return <NotLinked email={email} />;
 
-  const [actor, clients, team] = await Promise.all([getActor(), getClients(), getTeam()]);
+  const [actor, clients, team, funders] = await Promise.all([getActor(), getClients(), getTeam(), getFunders()]);
   return (
     <NewDealForm
       clients={clients.map((c) => ({ id: c.id, label: c.legalName }))}
       team={team.map((m) => ({ id: m.id, label: m.fullName }))}
+      funders={funders.map((f) => ({ id: f.id, label: f.name }))}
       me={actor?.memberId ?? ""}
     />
   );
