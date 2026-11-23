@@ -2,7 +2,15 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { NotLinked } from "@/components/not-linked";
 import { Card, Pill, Skeleton, outcomeTone, ratingTone } from "@/components/ui";
-import { STAGES, getFeeWatch, getMember, getPipeline, type FeeAlert, type PipelineDeal } from "@/lib/data";
+import {
+  STAGES,
+  getFeeWatch,
+  getMember,
+  getPipeline,
+  getReadinessScores,
+  type FeeAlert,
+  type PipelineDeal,
+} from "@/lib/data";
 import { rand } from "@/lib/format";
 
 export default function PipelinePage() {
@@ -33,7 +41,7 @@ async function Pipeline() {
   const { email, member } = await getMember();
   if (!member) return <NotLinked email={email} />;
 
-  const [deals, alerts] = await Promise.all([getPipeline(), getFeeWatch()]);
+  const [deals, alerts, readiness] = await Promise.all([getPipeline(), getFeeWatch(), getReadinessScores()]);
   const live = deals.filter((d) => d.outcome === "In Progress");
   const funded = deals.filter((d) => d.outcome === "Funded");
   const flags = live.reduce((n, d) => n + d.highFlags, 0);
@@ -87,7 +95,7 @@ async function Pipeline() {
                   </span>
                 </div>
                 {inStage.map((d) => (
-                  <DealCard key={d.id} deal={d} />
+                  <DealCard key={d.id} deal={d} readiness={readiness[d.id]} />
                 ))}
               </div>
             );
@@ -98,7 +106,13 @@ async function Pipeline() {
   );
 }
 
-function DealCard({ deal }: { deal: PipelineDeal }) {
+function DealCard({
+  deal,
+  readiness,
+}: {
+  deal: PipelineDeal;
+  readiness?: { score: number | null; provisional: boolean };
+}) {
   return (
     <Link
       href={`/deals/${deal.id}`}
@@ -115,6 +129,12 @@ function DealCard({ deal }: { deal: PipelineDeal }) {
           <Pill tone={ratingTone(deal.rating)}>{deal.rating}</Pill>
         ) : null}
       </span>
+      {readiness?.score != null ? (
+        <span className="text-xs text-muted">
+          Readiness <strong className="text-ink">{readiness.score}</strong>
+          {readiness.provisional ? " (in progress)" : ""}
+        </span>
+      ) : null}
       <span className="text-xs text-muted">
         {deal.daysInStage} {deal.daysInStage === 1 ? "day" : "days"} in stage
         {deal.owner ? ` · ${deal.owner}` : ""}

@@ -30,6 +30,7 @@ def db():
         c.execute((ROOT / "supabase/schema.sql").read_text())
         c.execute((ROOT / "supabase/bootstrap.sql").read_text())
         c.execute((ROOT / "supabase/phase1.sql").read_text())
+        c.execute((ROOT / "supabase/phase4.sql").read_text())
     os.environ["DATABASE_URL"] = URL
     import streamlit as st
     st.cache_data.clear(); st.cache_resource.clear()
@@ -232,7 +233,8 @@ def test_phase1_seeds_and_rerun(db):
     assert {"Business Partners Limited", "Investec", "Merchant Capital", "GenFin", "Lulalend"} <= set(names)
     assert len(names) == 7
     assert [s["code"] for s in structures][:6] == ["property", "capital", "asset", "working", "acquisition", "readiness"]
-    assert float(structures[0]["pct"]) == 5 and float(structures[0]["min_fee"]) == 150000
+    # Engagement Letter Generator terms: 5%, no minimum
+    assert float(structures[0]["pct"]) == 5 and float(structures[0]["min_fee"]) == 0
     # Safe to re-run: nothing duplicated
     with psycopg.connect(URL, autocommit=True) as c:
         c.execute((ROOT / "supabase/phase1.sql").read_text())
@@ -251,10 +253,11 @@ def test_phase1_fee_watch_and_audit(db):
         cur.execute("select id from funders where name='Investec' and org_id=%s", (org,))
         investec = cur.fetchone()["id"]
         # Mandate signed 8.5 months ago: exclusivity (9 months) ends within 30 days
-        cur.execute("""insert into mandates (org_id, deal_id, structure_name, fee_type, pct, min_fee, milestones, signed_on)
+        cur.execute("""insert into mandates (org_id, deal_id, structure_name, fee_type, pct, min_fee, milestones, signed_on,
+                                             exclusivity_months, tail_months)
                        values (%s, %s, 'Property Finance', 'pct', 5, 150000,
                                '[{"share":25,"trigger":"approval"},{"share":75,"trigger":"registration"}]',
-                               current_date - interval '8 months' - interval '15 days') returning id""", (org, deal_id))
+                               current_date - interval '8 months' - interval '15 days', 9, 24) returning id""", (org, deal_id))
         mandate = cur.fetchone()["id"]
         cur.execute("""insert into fees (org_id, deal_id, mandate_id, kind, description, share_pct, amount)
                        values (%s,%s,%s,'milestone','approval',25,125000),(%s,%s,%s,'milestone','registration',75,375000)""",
@@ -281,3 +284,38 @@ def test_phase1_fee_watch_and_audit(db):
     with db.tx() as cur:
         cur.execute("select kind from v_fee_watch where deal_id=%s and kind='in_tail'", (deal_id,))
         assert cur.fetchone() is not None
+
+
+def test_phase4_readiness_and_fee_defaults(db):
+    import psycopg
+    deal_id = db.create_deal("Readiness Test Holdings (Pty) Ltd", 5_000_000)
+    with db.tx() as cur:
+        cur.execute("select org_id from deals where id=%s", (deal_id,))
+        org = cur.fetchone()["org_id"]
+        cur.execute("select config from readiness_config where org_id=%s", (org,))
+        cfg = cur.fetchone()["config"]
+        assert sum(d["weight"] for d in cfg["dimensions"]) == 100
+        assert sum(len(d["criteria"]) for d in cfg["dimensions"]) == 35
+        assert all(c["gap"] in cfg["gaps"] for d in cfg["dimensions"] for c in d["criteria"])
+        cur.execute("""insert into readiness_assessments (org_id, deal_id, answers, score, answered, total_criteria)
+                       values (%s, %s, '{"1.1":"pass"}', 25, 1, 35)""", (org, deal_id))
+        cur.execute("""update readiness_assessments set score = 30, answers = '{"1.1":"pass","1.2":"fail"}'
+                       where deal_id=%s""", (deal_id,))
+        cur.execute("select action, detail from activity_log where deal_id=%s and action like 'readiness%%' order by id", (deal_id,))
+        audit = cur.fetchall()
+        # New mandates default to the generator's 6 / 12 months
+        cur.execute("""insert into mandates (org_id, deal_id, structure_name, fee_type) values (%s, %s, 'Capital Raise', 'pct')
+                       returning exclusivity_months, tail_months""", (org, deal_id))
+        m = cur.fetchone()
+    assert [a["action"] for a in audit] == ["readiness_assessments.insert", "readiness_assessments.update"]
+    assert audit[-1]["detail"]["score"] == "30" and audit[-1]["detail"]["fields"] == ["answers", "score"]
+    assert (m["exclusivity_months"], m["tail_months"]) == (6, 12)
+    # Re-running phase4 keeps a minimum someone set by hand
+    with db.tx() as cur:
+        cur.execute("update fee_structures set min_fee = 75000 where code='capital'")
+    with psycopg.connect(URL, autocommit=True) as c:
+        c.execute((ROOT / "supabase/phase4.sql").read_text())
+        c.execute((ROOT / "supabase/phase1.sql").read_text())
+    with db.tx() as cur:
+        cur.execute("select distinct min_fee from fee_structures where code='capital'")
+        assert [float(r["min_fee"]) for r in cur.fetchall()] == [75000]

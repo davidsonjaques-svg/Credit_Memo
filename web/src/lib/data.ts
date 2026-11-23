@@ -1,4 +1,5 @@
 import "server-only";
+import type { Answer, ReadinessConfig } from "@/lib/readiness";
 import { createClient } from "@/lib/supabase/server";
 
 import {
@@ -545,4 +546,55 @@ export async function getFeeWatch(): Promise<FeeAlert[]> {
       amount: num(a.amount),
     }))
     .sort((a, b) => order[a.kind] - order[b.kind]);
+}
+
+// ── Funding readiness ───────────────────────────────────────────────────────
+export type ReadinessRecord = {
+  answers: Record<string, Answer>;
+  notes: Record<string, string>;
+  score: number | null;
+  updatedAt: string;
+  assessedBy: string | null;
+};
+
+/** The org's readiness rubric and, if there is one, this deal's assessment. */
+export async function getReadiness(dealId: string): Promise<{
+  config: ReadinessConfig | null;
+  record: ReadinessRecord | null;
+}> {
+  const supabase = await createClient();
+  const [cfg, rec] = await Promise.all([
+    supabase.from("readiness_config").select("config").maybeSingle(),
+    supabase
+      .from("readiness_assessments")
+      .select("answers, notes, score, updated_at, members:assessed_by(full_name)")
+      .eq("deal_id", dealId)
+      .maybeSingle(),
+  ]);
+  const r = rec.data;
+  const who = r ? (Array.isArray(r.members) ? r.members[0] : r.members) : null;
+  return {
+    config: (cfg.data?.config as ReadinessConfig | undefined) ?? null,
+    record: r
+      ? {
+          answers: (r.answers ?? {}) as Record<string, Answer>,
+          notes: (r.notes ?? {}) as Record<string, string>,
+          score: r.score,
+          updatedAt: r.updated_at,
+          assessedBy: (who as { full_name?: string } | null)?.full_name ?? null,
+        }
+      : null,
+  };
+}
+
+/** deal id → readiness score, for the pipeline cards. Empty if phase4.sql isn't run yet. */
+export async function getReadinessScores(): Promise<Record<string, { score: number | null; provisional: boolean }>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("readiness_assessments")
+    .select("deal_id, score, answered, total_criteria");
+  if (error) return {};
+  return Object.fromEntries(
+    (data ?? []).map((r) => [r.deal_id, { score: r.score, provisional: r.answered < r.total_criteria }]),
+  );
 }
