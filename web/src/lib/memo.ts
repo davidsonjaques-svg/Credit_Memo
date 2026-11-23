@@ -50,6 +50,7 @@ export async function gatherMemoInputs(dealId: string): Promise<MemoInputs | nul
         .from("fact_sheets")
         .select("id, version, status, source, payload, gap_list, created_at")
         .eq("deal_id", dealId)
+        .neq("status", "draft")
         .order("version", { ascending: false })
         .limit(1)
         .maybeSingle(),
@@ -110,7 +111,13 @@ export async function gatherMemoInputs(dealId: string): Promise<MemoInputs | nul
   }
 
   // Fact Sheet payload, trimmed if it's very large
-  let factSheetPayload: unknown = factSheet.data?.payload ?? null;
+  let factSheetPayload: unknown = null;
+  if (factSheet.data?.payload) {
+    // The web form's own copy of the fields (_form) duplicates the payload
+    const { _form: _ignored, ...rest } = factSheet.data.payload as Record<string, unknown>;
+    void _ignored;
+    factSheetPayload = rest;
+  }
   if (factSheetPayload) {
     const text = JSON.stringify(factSheetPayload);
     if (text.length > PAYLOAD_LIMIT) factSheetPayload = { truncated: true, json: text.slice(0, PAYLOAD_LIMIT) };

@@ -29,9 +29,11 @@ def db():
         c.execute((ROOT / "tests/supabase_stub.sql").read_text())
         c.execute((ROOT / "supabase/schema.sql").read_text())
         c.execute((ROOT / "supabase/bootstrap.sql").read_text())
+        c.execute((ROOT / "supabase/web_app_v2.sql").read_text())
         c.execute((ROOT / "supabase/phase1.sql").read_text())
         c.execute((ROOT / "supabase/phase4.sql").read_text())
         c.execute((ROOT / "supabase/phase3.sql").read_text())
+        c.execute((ROOT / "supabase/phase5.sql").read_text())
     os.environ["DATABASE_URL"] = URL
     import streamlit as st
     st.cache_data.clear(); st.cache_resource.clear()
@@ -374,3 +376,71 @@ def test_phase3_memo_save_and_approval(db):
         c.execute((ROOT / "supabase/phase3.sql").read_text())
     with db.tx() as cur:
         cur.execute("update assessment_runs set pdf_path = 'x.pdf' where id = %s", (run[0],))
+
+
+def test_phase5_fact_sheet_draft_and_assessment(db):
+    """Web Fact Sheet: one draft per deal, submitted in one transaction with periods, run and flags."""
+    import json
+    import psycopg
+    deal_id = db.create_deal("Fact Sheet Web (Pty) Ltd", 3_000_000)
+    jaques = "11111111-1111-1111-1111-111111111111"
+    with psycopg.connect(URL, autocommit=True) as c:
+        c.execute("grant usage on schema public, auth to authenticated")
+        c.execute("insert into auth.users values (%s) on conflict do nothing", (jaques,))
+        c.execute("update members set user_id=%s where full_name='Jaques Davidson'", (jaques,))
+
+        def as_jaques(sql, args=()):
+            with c.transaction():
+                c.execute("set local role authenticated")
+                c.execute("select set_config('request.jwt.claim.sub', %s, true)", (jaques,))
+                c.execute("select set_config('request.jwt.claims', %s, true)",
+                          (f'{{"sub": "{jaques}", "aal": "aal2"}}',))
+                cur = c.execute(sql, args)
+                return cur.fetchone() if cur.description else None
+
+        d1 = as_jaques("select save_fact_sheet_draft(%s, %s)", (deal_id, json.dumps({"_form": {"a": 1}})))[0]
+        d2 = as_jaques("select save_fact_sheet_draft(%s, %s)", (deal_id, json.dumps({"_form": {"a": 2}})))[0]
+        assert d1 == d2                                  # one working draft, updated in place
+        # Streamlit saves a version while the draft is open
+        org = c.execute("select org_id from deals where id=%s", (deal_id,)).fetchone()[0]
+        c.execute("insert into fact_sheets (org_id, deal_id, version, payload) values (%s, %s, 2, '{}')",
+                  (org, deal_id))
+
+        periods = [{"period_label": "FY2025", "period_type": "AFS", "revenue": 1000000, "net_profit": -5000,
+                    "current_assets": 300000, "current_liabilities": 400000},
+                   {"period_label": "Mgt Accs (3 months)", "period_type": "MGMT", "months_covered": 3,
+                    "period_end": "2026-08-31", "revenue": 250000}]
+        flags = [{"severity": "CRITICAL", "code": "CURRENT_RATIO_BELOW_1_0", "message": "Current ratio below 1.0"}]
+        res = as_jaques("select save_fact_sheet_assessment(%s, %s, %s, %s, %s, %s)", (
+            deal_id, json.dumps({"payload": {"business_name": "X"}, "gap_list": {"queries": "AFS unsigned"}}),
+            json.dumps(periods),
+            json.dumps({"model": "claude-opus-5-5", "stop_reason": "end_turn", "output_md": "# A",
+                        "rating": "Refer", "input_tokens": 10, "output_tokens": 20}),
+            json.dumps(flags), json.dumps({"bee_level": "Level 2"})))[0]
+        assert res["fact_sheet_id"] == str(d1) and res["version"] == 3
+
+        # Submitted versions are locked; the next edit starts a new draft
+        try:
+            as_jaques("update fact_sheets set payload = '{}' where id = %s", (d1,))
+            raise AssertionError("submitted Fact Sheet should be locked")
+        except psycopg.errors.CheckViolation:
+            pass
+        d3 = as_jaques("select save_fact_sheet_draft(%s, %s)", (deal_id, json.dumps({"_form": {}})))[0]
+        assert d3 != d1
+
+        st = c.execute("select status, version from fact_sheets where id=%s", (d1,)).fetchone()
+        nper = c.execute("select count(*) from financial_periods where deal_id=%s and fact_sheet_id=%s",
+                         (deal_id, d1)).fetchone()[0]
+        run = c.execute("select run_type, fact_sheet_id, created_by is not null, truncated from assessment_runs where id=%s",
+                        (res["run_id"],)).fetchone()
+        nflags = c.execute("select count(*) from risk_flags where run_id=%s", (res["run_id"],)).fetchone()[0]
+        bee = c.execute("select c.bee_level from clients c join deals d on d.client_id=c.id where d.id=%s",
+                        (deal_id,)).fetchone()[0]
+        log = c.execute("select count(*) from activity_log where deal_id=%s and action='fact_sheet_assessment.generated'",
+                        (deal_id,)).fetchone()[0]
+        draft_v = c.execute("select version from fact_sheets where id=%s", (d3,)).fetchone()[0]
+    assert st == ("submitted", 3) and nper == 2 and nflags == 1 and log == 1 and draft_v == 4
+    assert run[0] == "fact_sheet_assessment" and str(run[1]) == str(d1) and run[2] and run[3] is False
+    assert bee == "Level 2"
+    with psycopg.connect(URL, autocommit=True) as c:
+        c.execute((ROOT / "supabase/phase5.sql").read_text())    # re-run safe

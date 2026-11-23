@@ -113,6 +113,30 @@ Each deal file then has a **Credit memo** button. The memo page:
 
 Capturing the Fact Sheet and financials still happens in the Streamlit app for now.
 
+## Fact Sheet in the web app, stage 1 (one-off)
+
+Run **`supabase/phase5.sql`** in the SQL Editor (after `phase3.sql`). No new Vercel settings: it
+uses the same `ANTHROPIC_API_KEY`.
+
+Each deal file then has a **Fact Sheet** button. The page has the same nine sections, fields, risk
+rules and assessment prompt as the Streamlit Fact Sheet, and saves the same records:
+
+- **Drafts:** the form saves itself 15 seconds after you stop typing (or press Save draft). One
+  working draft per deal; anyone in the team can pick it up.
+- **Upload and read:** in sections 05 and 06, upload the AFS / management accounts or bank
+  statement PDFs. They go straight from the browser into the private `deal-documents` bucket
+  (so Vercel's upload limit doesn't apply; 20 MB per batch), are listed on the deal, and Claude
+  reads them (text or scanned) to fill in the figures for you to check.
+- **Risk engine:** the flags update as you type.
+- **Generate assessment:** Claude writes the Deal Fact Sheet Assessment onto the page. Then, in one
+  transaction, the draft becomes the submitted Fact Sheet version, and its financial periods,
+  assessment run and risk flags are saved, exactly as Streamlit does. A submitted version can't be
+  changed; editing afterwards starts a new draft version.
+- Fact Sheets saved by the Streamlit page open in the web form too.
+
+Not in this stage: the client link (clients filling in their own Fact Sheet). It stays parked
+until the POPIA position on client uploads is settled; the Streamlit client link is unchanged.
+
 ## Run locally
 
 ```bash
