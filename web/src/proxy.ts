@@ -3,8 +3,12 @@ import { createServerClient } from "@supabase/ssr";
 import { supabaseKey, supabaseUrl } from "@/lib/supabase/env";
 
 /**
- * Runs before every page: refreshes the Supabase session cookie and sends
- * anyone who is not signed in to /login.
+ * Runs before every page. Refreshes the Supabase session cookie, then:
+ *   not signed in            → /login
+ *   signed in, no 2FA yet    → /mfa  (set up or enter the authenticator code)
+ *   signed in with 2FA       → the app
+ * The 2FA check reads the `aal` claim in the session token: aal2 means the
+ * authenticator code was entered for this session.
  */
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -28,24 +32,27 @@ export async function proxy(request: NextRequest) {
   });
 
   const { data } = await supabase.auth.getClaims();
-  const signedIn = Boolean(data?.claims?.sub);
+  const claims = data?.claims;
+  const signedIn = Boolean(claims?.sub);
+  const twoFactorDone = claims?.aal === "aal2";
+
   const { pathname } = request.nextUrl;
-  const isLogin = pathname.startsWith("/login");
+  const onLogin = pathname.startsWith("/login");
+  const onMfa = pathname.startsWith("/mfa");
 
-  if (!signedIn && !isLogin) {
+  const go = (path: string) => {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = path;
     url.search = "";
-    return NextResponse.redirect(url);
-  }
+    const redirect = NextResponse.redirect(url);
+    // Keep any refreshed auth cookies on the redirect
+    response.cookies.getAll().forEach((c) => redirect.cookies.set(c));
+    return redirect;
+  };
 
-  if (signedIn && isLogin) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    url.search = "";
-    return NextResponse.redirect(url);
-  }
-
+  if (!signedIn) return onLogin ? response : go("/login");
+  if (!twoFactorDone) return onMfa ? response : go("/mfa");
+  if (onLogin || onMfa) return go("/");
   return response;
 }
 

@@ -4,9 +4,14 @@ The Next.js front end for the ScaleForce Capital Deal Suite (Phase 0 and the sta
 the implementation plan). It reads the same Supabase database as the Streamlit app, so every deal
 created there shows up here.
 
-What's in this first cut:
+What's in it:
 
-- **Login** with Supabase Auth (email and password). Everything else is behind it.
+- **Login with two-factor.** Email and password, then a 6-digit code from an authenticator app.
+  First sign-in walks each person through scanning a QR code. Nothing else opens until the code is
+  entered, and the database itself hides all deal data from a session without two-factor.
+- **Deal forms:** create a deal (and its client), move a deal between stages or close it with an
+  outcome, edit its details, and add notes. Every change is logged against the deal ID and
+  attributed to the person who made it.
 - **Pipeline** — live deals, pipeline value, high-risk flags and funded totals, plus the six-stage
   board, all read from the `v_pipeline` view.
 - **Deal file** — deal header, stage stepper, latest assessment and the audit trail
@@ -37,6 +42,18 @@ in.
    `members` row. That links each login to its team member, which is what RLS keys on.
 
 Someone who signs in before being linked sees a "not linked yet" message rather than an error.
+
+## Switch on two-factor and the deal forms (one-off)
+
+1. Supabase → **Authentication → Multi-Factor**: make sure **TOTP** is enabled.
+2. Deploy this version, sign in and set up your authenticator.
+3. Supabase → SQL Editor → paste and run **`supabase/web_app_v2.sql`**. It makes the database
+   require two-factor for every read, attributes web-app edits to the signed-in person, and gives
+   the web app permission to write deals, clients and notes. The Streamlit app is unaffected: it
+   connects with the database connection string, not as a signed-in user.
+
+Lost phone? An admin deletes the person's factor in Supabase → Authentication → Users → the user →
+MFA factors. They set up a new one at their next sign-in.
 
 ## Run locally
 

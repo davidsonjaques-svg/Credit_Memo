@@ -15,6 +15,12 @@ export default function PipelinePage() {
             Every mandate is one record with one deal ID. Open a deal to see its full file.
           </p>
         </div>
+        <Link
+          href="/deals/new"
+          className="flex h-11 items-center rounded-lg bg-navy px-4 text-sm font-semibold text-white"
+        >
+          New deal
+        </Link>
       </div>
       <Suspense fallback={<PipelineSkeleton />}>
         <Pipeline />

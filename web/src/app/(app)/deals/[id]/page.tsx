@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { NotLinked } from "@/components/not-linked";
 import { Card, Pill, Skeleton, outcomeTone, ratingTone } from "@/components/ui";
-import { STAGES, getDeal, getMember } from "@/lib/data";
+import { DetailsForm, NoteForm, StageForm } from "@/components/forms/deal-forms";
+import { STAGES, getDeal, getMember, getTeam } from "@/lib/data";
 import { day, rand } from "@/lib/format";
 
 export default function DealPage({ params }: PageProps<"/deals/[id]">) {
@@ -19,8 +20,9 @@ async function DealFile({ params }: { params: Promise<{ id: string }> }) {
   const { email, member } = await getMember();
   if (!member) return <NotLinked email={email} />;
 
-  const result = await getDeal(id);
+  const [result, team] = await Promise.all([getDeal(id), getTeam()]);
   if (!result) notFound();
+  const teamOptions = team.map((m) => ({ id: m.id, label: m.fullName }));
   const { deal, trail, recommendation } = result;
   const current = STAGES.indexOf(deal.stage);
 
@@ -110,9 +112,35 @@ async function DealFile({ params }: { params: Promise<{ id: string }> }) {
               </>
             )}
           </Card>
+          <Card className="flex flex-col gap-4">
+            <h2 className="text-base font-semibold">Move the deal</h2>
+            <StageForm dealId={deal.id} stage={deal.stage} outcome={deal.outcome} />
+          </Card>
+          <Card className="flex flex-col gap-4">
+            <h2 className="text-base font-semibold">Add a note</h2>
+            <NoteForm dealId={deal.id} />
+          </Card>
+          <Card>
+            <details>
+              <summary className="cursor-pointer text-base font-semibold">Edit deal details</summary>
+              <div className="mt-4">
+                <DetailsForm
+                  dealId={deal.id}
+                  team={teamOptions}
+                  values={{
+                    dealName: deal.dealName,
+                    product: deal.product,
+                    funder: deal.funder,
+                    fundingRequired: deal.fundingRequired,
+                    ownerId: deal.ownerId,
+                  }}
+                />
+              </div>
+            </details>
+          </Card>
           {deal.notes ? (
             <Card>
-              <h2 className="text-base font-semibold">Notes</h2>
+              <h2 className="text-base font-semibold">Original notes</h2>
               <p className="mt-2 whitespace-pre-line text-sm leading-relaxed">{deal.notes}</p>
             </Card>
           ) : null}
@@ -134,9 +162,11 @@ async function DealFile({ params }: { params: Promise<{ id: string }> }) {
               <li key={i} className="flex flex-col gap-1.5 border-t border-sand-2 py-3">
                 <span className="flex items-center gap-2">
                   <span className="text-xs text-muted">{day(e.at)}</span>
-                  <Pill tone={e.source === "Stage" ? "gold" : "zoho"}>{e.source}</Pill>
+                  <Pill tone={e.source === "Stage" ? "gold" : e.source === "Note" ? "ok" : "zoho"}>
+                    {e.source}
+                  </Pill>
                 </span>
-                <span className="text-sm leading-snug">
+                <span className="whitespace-pre-line text-sm leading-snug">
                   {e.text}
                   {e.who ? <span className="text-muted"> · {e.who}</span> : null}
                 </span>

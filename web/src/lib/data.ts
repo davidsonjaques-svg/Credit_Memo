@@ -1,16 +1,13 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 
-/** Pipeline stages, in order, exactly as the `deals.stage` check constraint allows. */
-export const STAGES = [
-  "Lead",
-  "Intake",
-  "Due Diligence",
-  "Credit Committee",
-  "Lender Placement",
-  "Closed",
-] as const;
-export type Stage = (typeof STAGES)[number];
+import { STAGES, OUTCOMES, PRODUCTS, type Stage, type Outcome } from "@/lib/constants";
+
+export { STAGES, OUTCOMES, PRODUCTS };
+export type { Stage, Outcome };
+
+export type TeamMember = { id: string; fullName: string };
+export type ClientOption = { id: string; legalName: string };
 
 export type Member = {
   fullName: string;
@@ -29,6 +26,7 @@ export type PipelineDeal = {
   stage: Stage;
   outcome: string;
   owner: string | null;
+  ownerId: string | null;
   notes: string | null;
   daysInStage: number;
   rating: string | null;
@@ -40,7 +38,7 @@ export type PipelineDeal = {
 
 export type TrailEvent = {
   at: string;
-  source: "Stage" | "Activity";
+  source: "Stage" | "Activity" | "Note";
   text: string;
   who: string | null;
 };
@@ -56,6 +54,7 @@ type PipelineRow = {
   stage: Stage;
   outcome: string;
   owner: string | null;
+  owner_id: string | null;
   notes: string | null;
   days_in_stage: number | null;
   rating: string | null;
@@ -77,6 +76,7 @@ function toDeal(r: PipelineRow): PipelineDeal {
     stage: r.stage,
     outcome: r.outcome,
     owner: r.owner,
+    ownerId: r.owner_id,
     notes: r.notes,
     daysInStage: Number(r.days_in_stage ?? 0),
     rating: r.rating,
@@ -112,7 +112,7 @@ export async function getPipeline(): Promise<PipelineDeal[]> {
   const { data, error } = await supabase
     .from("v_pipeline")
     .select(
-      "id, deal_ref, deal_name, client, product, funder, funding_required, stage, outcome, owner, notes, days_in_stage, rating, risk_score, high_flags, run_count, updated_at",
+      "id, deal_ref, deal_name, client, product, funder, funding_required, stage, outcome, owner, owner_id, notes, days_in_stage, rating, risk_score, high_flags, run_count, updated_at",
     )
     .order("updated_at", { ascending: false });
 
@@ -130,7 +130,7 @@ export async function getDeal(id: string): Promise<{
   const { data: row } = await supabase
     .from("v_pipeline")
     .select(
-      "id, deal_ref, deal_name, client, product, funder, funding_required, stage, outcome, owner, notes, days_in_stage, rating, risk_score, high_flags, run_count, updated_at, last_run_id",
+      "id, deal_ref, deal_name, client, product, funder, funding_required, stage, outcome, owner, owner_id, notes, days_in_stage, rating, risk_score, high_flags, run_count, updated_at, last_run_id",
     )
     .eq("id", id)
     .maybeSingle();
@@ -144,7 +144,7 @@ export async function getDeal(id: string): Promise<{
       .order("changed_at", { ascending: false }),
     supabase
       .from("activity_log")
-      .select("action, created_at, members:actor(full_name)")
+      .select("action, detail, created_at, members:actor(full_name)")
       .eq("deal_id", id)
       .order("created_at", { ascending: false })
       .limit(50),
@@ -173,8 +173,8 @@ export async function getDeal(id: string): Promise<{
     })),
     ...(activity.data ?? []).map((a) => ({
       at: a.created_at as string,
-      source: "Activity" as const,
-      text: humanise(a.action as string),
+      source: (a.action === "note.added" ? "Note" : "Activity") as TrailEvent["source"],
+      text: describe(a.action as string, a.detail as Record<string, unknown> | null),
       who: nameOf(a.members),
     })),
   ].sort((a, b) => (a.at < b.at ? 1 : -1));
@@ -186,8 +186,56 @@ export async function getDeal(id: string): Promise<{
   };
 }
 
+/** Plain-English line for an activity_log row. */
+function describe(action: string, detail: Record<string, unknown> | null): string {
+  const d = detail ?? {};
+  switch (action) {
+    case "note.added":
+      return String(d.text ?? "");
+    case "deal.created":
+      return "Deal created in the web app";
+    case "deal.outcome":
+      return `Outcome set to ${String(d.outcome ?? "")}`;
+    case "deal.updated": {
+      const fields = Array.isArray(d.fields) ? (d.fields as string[]).join(", ") : "";
+      return fields ? `Details updated: ${fields}` : "Details updated";
+    }
+    default:
+      return humanise(action);
+  }
+}
+
 /** 'fact_sheet.submitted' → 'Fact sheet submitted' */
 function humanise(action: string): string {
   const words = action.replace(/[._]/g, " ").trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** Context every write needs: who is acting and for which organisation. */
+export async function getActor(): Promise<{ memberId: string; orgId: string } | null> {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return null;
+  const { data } = await supabase
+    .from("members")
+    .select("id, org_id")
+    .eq("user_id", auth.user.id)
+    .maybeSingle();
+  return data ? { memberId: data.id, orgId: data.org_id } : null;
+}
+
+export async function getTeam(): Promise<TeamMember[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("members")
+    .select("id, full_name")
+    .eq("active", true)
+    .order("full_name");
+  return (data ?? []).map((m) => ({ id: m.id, fullName: m.full_name }));
+}
+
+export async function getClients(): Promise<ClientOption[]> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("clients").select("id, legal_name").order("legal_name");
+  return (data ?? []).map((c) => ({ id: c.id, legalName: c.legal_name }));
 }
