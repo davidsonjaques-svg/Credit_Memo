@@ -82,12 +82,20 @@ async function DealFile({ params }: { params: Promise<{ id: string }> }) {
             <Pill tone={outcomeTone(deal.outcome)}>
               {deal.outcome === "In Progress" ? deal.stage : deal.outcome}
             </Pill>
-            <Link
-              href={`/deals/${deal.id}/memo`}
-              className="flex h-10 items-center rounded-lg bg-navy px-4 text-sm font-semibold text-white"
-            >
-              Credit memo →
-            </Link>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Link
+                href={`/deals/${deal.id}/fact-sheet`}
+                className="flex h-10 items-center rounded-lg border border-line bg-white px-4 text-sm font-semibold"
+              >
+                Fact Sheet →
+              </Link>
+              <Link
+                href={`/deals/${deal.id}/memo`}
+                className="flex h-10 items-center rounded-lg bg-navy px-4 text-sm font-semibold text-white"
+              >
+                Credit memo →
+              </Link>
+            </div>
           </div>
         </div>
         <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4 border-t border-sand-2 pt-4">

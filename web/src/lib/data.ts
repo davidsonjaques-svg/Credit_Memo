@@ -644,3 +644,113 @@ export async function getMemoRuns(dealId: string): Promise<MemoRun[]> {
     approvedAt: r.approved_at,
   }));
 }
+
+// ── Fact Sheet ──────────────────────────────────────────────────────────────
+export type DealDocument = {
+  id: string;
+  docType: string;
+  fileName: string;
+  uploadedAt: string;
+  read: boolean;
+};
+
+export type FactSheetRun = {
+  id: string;
+  createdAt: string;
+  createdBy: string | null;
+  outputMd: string;
+  truncated: boolean;
+  version: number | null;
+  flags: { severity: string; message: string }[];
+};
+
+export type FactSheetWorkspace = {
+  dealId: string;
+  orgId: string;
+  dealRef: string;
+  client: string;
+  form: import("@/lib/fact-sheet").FactSheetForm;
+  status: "draft" | "submitted" | "none";
+  version: number | null;
+  savedAt: string | null;
+  documents: DealDocument[];
+  run: FactSheetRun | null;
+};
+
+export async function getFactSheetWorkspace(dealId: string): Promise<FactSheetWorkspace | null> {
+  const { formFromPayload, LEGAL_ENTITIES, BEE_LEVELS } = await import("@/lib/fact-sheet");
+  const supabase = await createClient();
+  const { data: deal } = await supabase
+    .from("v_pipeline")
+    .select("id, org_id, deal_ref, client, client_id, funding_required")
+    .eq("id", dealId)
+    .maybeSingle();
+  if (!deal) return null;
+
+  const [client, sheet, docs, run] = await Promise.all([
+    supabase.from("clients").select("legal_name, legal_entity, bee_level, date_established").eq("id", deal.client_id).maybeSingle(),
+    supabase
+      .from("fact_sheets")
+      .select("id, version, status, payload, created_at, updated_at")
+      .eq("deal_id", dealId)
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("documents")
+      .select("id, doc_type, file_name, uploaded_at, extraction")
+      .eq("deal_id", dealId)
+      .order("uploaded_at", { ascending: false }),
+    supabase
+      .from("assessment_runs")
+      .select("id, created_at, output_md, truncated, creator:created_by(full_name), fact_sheet:fact_sheet_id(version)")
+      .eq("deal_id", dealId)
+      .eq("run_type", "fact_sheet_assessment")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const c = client.data;
+  const seed = {
+    businessName: c?.legal_name ?? deal.client,
+    totalFundingRequired: Number(deal.funding_required ?? 0) || null,
+    dateEstablished: c?.date_established ?? "",
+    ...((LEGAL_ENTITIES as readonly string[]).includes(c?.legal_entity ?? "") ? { legalEntity: c!.legal_entity } : {}),
+    ...((BEE_LEVELS as readonly string[]).includes(c?.bee_level ?? "") ? { beeStatus: c!.bee_level } : {}),
+  };
+
+  const flags = run.data
+    ? ((await supabase.from("risk_flags").select("severity, message").eq("run_id", run.data.id).order("id")).data ?? [])
+    : [];
+  const one = (v: unknown) => (Array.isArray(v) ? v[0] : v) as Record<string, unknown> | null;
+
+  return {
+    dealId,
+    orgId: deal.org_id,
+    dealRef: deal.deal_ref,
+    client: deal.client,
+    form: formFromPayload(sheet.data?.payload, seed),
+    status: (sheet.data?.status === "draft" ? "draft" : sheet.data ? "submitted" : "none"),
+    version: sheet.data?.version ?? null,
+    savedAt: sheet.data ? (sheet.data.updated_at ?? sheet.data.created_at) : null,
+    documents: (docs.data ?? []).map((d) => ({
+      id: d.id,
+      docType: d.doc_type,
+      fileName: d.file_name,
+      uploadedAt: d.uploaded_at,
+      read: d.extraction !== null,
+    })),
+    run: run.data
+      ? {
+          id: run.data.id,
+          createdAt: run.data.created_at,
+          createdBy: (one(run.data.creator)?.full_name as string | undefined) ?? null,
+          outputMd: run.data.output_md ?? "",
+          truncated: run.data.truncated,
+          version: (one(run.data.fact_sheet)?.version as number | undefined) ?? null,
+          flags,
+        }
+      : null,
+  };
+}
