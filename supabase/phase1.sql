@@ -112,30 +112,30 @@ create trigger trg_fee_structures_touch before update on fee_structures
   for each row execute function touch_updated_at();
 
 -- Seed: the generator's six structures, plus the three diagnostic tiers in pricing.yaml.
--- New-mandate minimum success fee (R150,000) comes from pricing.yaml stage2.
+-- Success-fee minimums are 0, as in the generator (phase4.sql moves existing seeds to 0).
 insert into fee_structures (org_id, code, name, fee_type, pct, fixed_amount, min_fee, cap_fee,
                             commitment_fee, basis, milestones, fee_protection, sort)
 select o.id, s.code, s.name, s.fee_type, s.pct, s.fixed_amount, s.min_fee, s.cap_fee,
        0, s.basis, s.milestones::jsonb, s.fee_protection, s.sort
 from orgs o
 cross join (values
-  ('property', 'Property Finance', 'pct', 5, 0, 150000, null::numeric,
+  ('property', 'Property Finance', 'pct', 5, 0, 0, null::numeric,
    'the total facility amount approved by the Funder',
    '[{"share":25,"trigger":"the Client''s receipt of the Funder''s written approval or letter of offer"},{"share":75,"trigger":"registration of the mortgage bond and/or first drawdown of the facility"}]',
    true, 10),
-  ('capital', 'Capital Raise', 'pct', 10, 0, 150000, null,
+  ('capital', 'Capital Raise', 'pct', 10, 0, 0, null,
    'the total capital approved by the Funder',
    '[{"share":100,"trigger":"the Client''s receipt of the Funder''s written approval letter"}]',
    true, 20),
-  ('asset', 'Asset & Equipment Finance', 'pct', 3, 0, 150000, null,
+  ('asset', 'Asset & Equipment Finance', 'pct', 3, 0, 0, null,
    'the total asset finance facility approved by the Funder',
    '[{"share":50,"trigger":"the Client''s receipt of the Funder''s written approval"},{"share":50,"trigger":"delivery of the asset(s) and payout by the Funder to the supplier"}]',
    true, 30),
-  ('working', 'Working Capital / Overdraft Facility', 'pct', 2.5, 0, 150000, null,
+  ('working', 'Working Capital / Overdraft Facility', 'pct', 2.5, 0, 0, null,
    'the facility limit approved by the Funder',
    '[{"share":100,"trigger":"the Client''s receipt of the Funder''s written approval or letter of offer"}]',
    true, 40),
-  ('acquisition', 'Acquisition Finance', 'pct', 3, 0, 150000, null,
+  ('acquisition', 'Acquisition Finance', 'pct', 3, 0, 0, null,
    'the total funding approved by the Funder(s)',
    '[{"share":25,"trigger":"the Client''s receipt of the Funder''s written approval or letter of offer"},{"share":75,"trigger":"the first drawdown of the funding or payment of the purchase consideration, whichever is earlier"}]',
    true, 50),
@@ -174,8 +174,8 @@ create table if not exists mandates (
   basis_amount        numeric(16,2),          -- amount the % applies to (approved amount once known)
   letter_ref          text,
   signed_on           date,
-  exclusivity_months  integer not null default 9  check (exclusivity_months >= 0),  -- pricing.yaml
-  tail_months         integer not null default 24 check (tail_months >= 0),         -- pricing.yaml
+  exclusivity_months  integer not null default 6  check (exclusivity_months >= 0),  -- Engagement Letter Generator
+  tail_months         integer not null default 12 check (tail_months >= 0),         -- Engagement Letter Generator
   terminated_on       date,
   created_by          uuid references members(id) default current_member(),
   created_at          timestamptz not null default now(),
@@ -233,15 +233,12 @@ begin
     if changed is null then return new; end if;
   end if;
 
-  deal := case
-    when tg_table_name in ('submissions','fees','mandates','documents') then (rec ->> 'deal_id')::uuid
-    else null end;
+  deal := nullif(rec ->> 'deal_id', '')::uuid;
 
   insert into activity_log (org_id, deal_id, action, detail)
   values (
     (rec ->> 'org_id')::uuid,
-    case when tg_op = 'DELETE' and tg_table_name in ('submissions','fees','mandates','documents')
-         then null else deal end,
+    case when tg_op = 'DELETE' then null else deal end,
     tg_table_name || '.' || lower(tg_op),
     jsonb_strip_nulls(jsonb_build_object(
       'id', rec ->> 'id',
@@ -249,6 +246,7 @@ begin
       'name', coalesce(rec ->> 'name', rec ->> 'legal_name', rec ->> 'file_name', rec ->> 'description'),
       'status', case when tg_table_name = 'submissions' then rec ->> 'status' end,
       'funder_id', case when tg_table_name = 'submissions' then rec ->> 'funder_id' end,
+      'score', case when tg_table_name = 'readiness_assessments' then rec ->> 'score' end,
       'deal_id', case when tg_op = 'DELETE' then rec ->> 'deal_id' end
     ))
   );

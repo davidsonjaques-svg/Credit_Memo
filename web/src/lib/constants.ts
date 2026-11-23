@@ -65,8 +65,8 @@ export const INSTRUMENTS = [
   "Equity",
 ];
 
-/** pricing.yaml (stage2) defaults for new mandates. */
-export const MANDATE_DEFAULTS = { exclusivityMonths: 9, tailMonths: 24 };
+/** Defaults for new mandates, matching the Engagement Letter Generator. */
+export const MANDATE_DEFAULTS = { exclusivityMonths: 6, tailMonths: 12 };
 
 /** Fee for a structure on a basis amount: % with minimum and cap, or fixed. */
 export function totalFee(

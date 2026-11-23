@@ -67,8 +67,8 @@ Run **`supabase/phase1.sql`** in the SQL Editor (after `web_app_v2.sql`). It add
 - **Mandate and fees** on each deal: pick the engagement letter structure (the same six as the
   Engagement Letter Generator, plus the three diagnostic tiers from `pricing.yaml`). The fee lines
   are created from its milestones, a commitment fee is set off against the first milestone, and
-  each line is marked invoiced and paid. New mandates default to `pricing.yaml`: R150,000 minimum
-  success fee, 9 months' exclusivity, 24-month fee-protection tail.
+  each line is marked invoiced and paid. New mandates default to the Engagement Letter
+  Generator's terms: no minimum success fee, 6 months' exclusivity, 12-month fee-protection tail.
 - **Revenue watch** on the pipeline: approved but not invoiced, invoices past the 7-day term,
   exclusivity ending within 30 days, and closed deals still inside the fee-protection tail.
 - **Automatic audit**: every change to funders, submissions, mandates, fees, clients and documents
@@ -76,6 +76,21 @@ Run **`supabase/phase1.sql`** in the SQL Editor (after `web_app_v2.sql`). It add
 
 Fee structures live in the `fee_structures` table; edit rates or milestones there (Supabase →
 Table Editor). Existing mandates keep the terms they were signed on.
+
+## Phase 4: funding readiness and funder match (one-off)
+
+Run **`supabase/phase4.sql`** in the SQL Editor (after `phase1.sql`). It adds:
+
+- **Funding readiness** on each deal: the 35-criterion rubric from the Brokerage transformation
+  project (7 dimensions, weighted to 100). Answer Yes / No / N/A per criterion; the score, verdict
+  band, gap register, Stage 1 remediation quote and weeks-to-ready follow the diagnostic engine's
+  rules. The score also shows on the pipeline cards. The rubric, gap library and Stage 1 pricing
+  are one JSON document in `readiness_config`, so recalibrating needs no code change.
+- **Funder match** on each deal: every funder on the panel ranked strong / possible / weak against
+  the deal's product, amount and readiness score, with the reasons. Funders with no appetite on file
+  show as "appetite unknown" until their page is filled in.
+- **Fee defaults** moved to the Engagement Letter Generator's terms for new mandates (existing
+  mandates keep what they were signed on).
 
 ## Run locally
 

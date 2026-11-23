@@ -11,6 +11,9 @@ import {
   SubmissionForm,
 } from "@/components/forms/commercial-forms";
 import { DetailsForm, NoteForm, StageForm } from "@/components/forms/deal-forms";
+import { ReadinessForm } from "@/components/forms/readiness-form";
+import { FIT_ORDER, matchFunder, type Fit } from "@/lib/match";
+import { OWNER_LABEL, scoreReadiness, type ReadinessConfig } from "@/lib/readiness";
 import {
   STAGES,
   getCommercials,
@@ -18,8 +21,11 @@ import {
   getFeeStructures,
   getFunders,
   getMember,
+  getReadiness,
   getTeam,
   type FeeLine,
+  type Funder,
+  type ReadinessRecord,
   type Mandate,
   type Submission,
 } from "@/lib/data";
@@ -38,12 +44,13 @@ async function DealFile({ params }: { params: Promise<{ id: string }> }) {
   const { email, member } = await getMember();
   if (!member) return <NotLinked email={email} />;
 
-  const [result, team, funders, structures, commercials] = await Promise.all([
+  const [result, team, funders, structures, commercials, readiness] = await Promise.all([
     getDeal(id),
     getTeam(),
     getFunders(),
     getFeeStructures(),
     getCommercials(id),
+    getReadiness(id),
   ]);
   if (!result) notFound();
   const teamOptions = team.map((m) => ({ id: m.id, label: m.fullName }));
@@ -137,6 +144,14 @@ async function DealFile({ params }: { params: Promise<{ id: string }> }) {
               </>
             )}
           </Card>
+          <ReadinessCard dealId={deal.id} config={readiness.config} record={readiness.record} />
+          <FunderMatchCard
+            funders={funders}
+            product={deal.product}
+            amount={deal.fundingRequired}
+            score={readiness.record?.score ?? null}
+            submitted={new Set(commercials.submissions.map((s) => s.funderId))}
+          />
           <MandateCard
             dealId={deal.id}
             mandate={commercials.mandate}
@@ -211,6 +226,206 @@ async function DealFile({ params }: { params: Promise<{ id: string }> }) {
         </aside>
       </div>
     </>
+  );
+}
+
+const SEVERITY_TONE = { C: "bad", H: "warn", M: "gold", L: "neutral" } as const;
+
+function ReadinessCard({
+  dealId,
+  config,
+  record,
+}: {
+  dealId: string;
+  config: ReadinessConfig | null;
+  record: ReadinessRecord | null;
+}) {
+  if (!config) {
+    return (
+      <Card>
+        <h2 className="text-base font-semibold">Funding readiness</h2>
+        <p className="mt-1 text-sm text-muted">
+          The readiness rubric isn&rsquo;t loaded yet. Run <code>supabase/phase4.sql</code> in Supabase.
+        </p>
+      </Card>
+    );
+  }
+
+  const r = scoreReadiness(config, record?.answers ?? {});
+  const started = r.answered > 0;
+  const tone = r.score >= 80 ? "ok" : r.score >= 60 ? "gold" : r.score >= 40 ? "warn" : "bad";
+
+  return (
+    <Card className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold">Funding readiness</h2>
+          <p className="mt-1 text-sm text-muted">
+            {started
+              ? `${r.answered} of ${r.total} criteria answered${record?.assessedBy ? ` · ${record.assessedBy}` : ""}${record ? ` · ${day(record.updatedAt)}` : ""}`
+              : "Not assessed yet. Score the client against the 35-point rubric before mandating."}
+          </p>
+        </div>
+        {started ? (
+          <div className="text-right">
+            <div className="text-3xl font-bold tabular-nums">
+              {r.score}
+              <span className="text-base font-normal text-muted"> / 100</span>
+            </div>
+            <Pill tone={tone}>{r.provisional ? `${r.band.label} (so far)` : r.band.label}</Pill>
+          </div>
+        ) : null}
+      </div>
+
+      {started ? (
+        <>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3 text-sm">
+            <div className="rounded-lg bg-sand px-3 py-2.5">
+              <div className="text-xs text-muted">Next step</div>
+              <div className="font-semibold">{r.band.action}</div>
+            </div>
+            <div className="rounded-lg bg-sand px-3 py-2.5">
+              <div className="text-xs text-muted">Gaps</div>
+              <div className="font-semibold">
+                {r.register.length} ({r.quote.counts.C} critical, {r.quote.counts.H} high)
+              </div>
+            </div>
+            <div className="rounded-lg bg-sand px-3 py-2.5">
+              <div className="text-xs text-muted">Stage 1 remediation quote</div>
+              <div className="font-semibold">
+                {r.quote.feeExVat ? `${rand(r.quote.feeExVat)} excl. VAT` : "None needed"}
+              </div>
+            </div>
+            <div className="rounded-lg bg-sand px-3 py-2.5">
+              <div className="text-xs text-muted">Weeks to funder-ready</div>
+              <div className="font-semibold">{r.weeksToReady || "Ready now"}</div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            {r.dimensions.map((d) => (
+              <div key={d.id} className="flex items-center gap-3 text-xs">
+                <span className="w-56 shrink-0 truncate text-slate">{d.name}</span>
+                <span className="h-2 flex-1 rounded-full bg-sand-2">
+                  <span
+                    className="block h-2 rounded-full bg-navy"
+                    style={{ width: `${d.weight ? (d.earned / d.weight) * 100 : 0}%` }}
+                  />
+                </span>
+                <span className="w-14 shrink-0 text-right tabular-nums text-muted">
+                  {d.earned} / {d.weight}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {r.register.length > 0 ? (
+            <details>
+              <summary className="cursor-pointer text-sm font-semibold">
+                Gap register ({r.register.length}) · {r.quote.billableHours} ScaleForce hours,{" "}
+                {rand(r.quote.thirdPartyCosts)} third-party costs
+              </summary>
+              <ol className="mt-2 flex flex-col">
+                {r.register.map((g) => (
+                  <li key={g.code} className="flex flex-col gap-1 border-t border-sand-2 py-2.5 text-sm">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <Pill tone={SEVERITY_TONE[g.severity]}>{g.severityLabel}</Pill>
+                      <span className="font-semibold">{g.title}</span>
+                    </span>
+                    <span className="text-slate">{g.remediation}</span>
+                    <span className="text-xs text-muted">
+                      {OWNER_LABEL[g.owner] ?? g.owner} · {g.effort_hours} h
+                      {g.third_party_cost ? ` · ${rand(g.third_party_cost)} third-party` : ""} · {g.lead_weeks}{" "}
+                      {g.lead_weeks === 1 ? "week" : "weeks"} · criterion {g.criterion}
+                      {record?.notes[g.criterion] ? ` · ${record.notes[g.criterion]}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-1 text-xs text-muted">{r.quote.note}</p>
+            </details>
+          ) : null}
+        </>
+      ) : null}
+
+      <details open={!started}>
+        <summary className="cursor-pointer text-sm font-semibold">
+          {started ? "Update the assessment" : "Start the assessment"}
+        </summary>
+        <div className="mt-4">
+          <ReadinessForm
+            dealId={dealId}
+            config={config}
+            answers={record?.answers ?? {}}
+            notes={record?.notes ?? {}}
+          />
+        </div>
+      </details>
+    </Card>
+  );
+}
+
+const FIT_LABEL: Record<Fit, { label: string; tone: "ok" | "gold" | "neutral" | "bad" }> = {
+  strong: { label: "Strong fit", tone: "ok" },
+  moderate: { label: "Possible fit", tone: "gold" },
+  unknown: { label: "Appetite unknown", tone: "neutral" },
+  weak: { label: "Weak fit", tone: "bad" },
+};
+
+function FunderMatchCard({
+  funders,
+  product,
+  amount,
+  score,
+  submitted,
+}: {
+  funders: Funder[];
+  product: string | null;
+  amount: number;
+  score: number | null;
+  submitted: Set<string>;
+}) {
+  const matches = funders
+    .map((f) => matchFunder(f, { product, amount, score }, rand))
+    .sort((a, b) => FIT_ORDER[a.fit] - FIT_ORDER[b.fit] || a.name.localeCompare(b.name));
+  const unknown = matches.filter((m) => m.fit === "unknown").length;
+
+  return (
+    <Card className="flex flex-col gap-3">
+      <div>
+        <h2 className="text-base font-semibold">Funder match</h2>
+        <p className="mt-1 text-sm text-muted">
+          The panel ranked against this deal&rsquo;s product, amount{score !== null ? " and readiness score" : ""}.
+          {unknown > 0 ? (
+            <>
+              {" "}
+              {unknown} {unknown === 1 ? "funder has" : "funders have"} no appetite on file yet;{" "}
+              <Link href="/funders" className="underline underline-offset-2">
+                fill it in
+              </Link>{" "}
+              to sharpen the match.
+            </>
+          ) : null}
+        </p>
+      </div>
+      <ul className="flex flex-col">
+        {matches.map((m) => (
+          <li key={m.funderId} className="flex flex-col gap-1 border-t border-sand-2 py-2.5">
+            <span className="flex flex-wrap items-center gap-2">
+              <Link href={`/funders/${m.funderId}`} className="text-sm font-semibold hover:underline">
+                {m.name}
+              </Link>
+              <Pill tone={FIT_LABEL[m.fit].tone}>{FIT_LABEL[m.fit].label}</Pill>
+              {submitted.has(m.funderId) ? <Pill tone="zoho">Submitted</Pill> : null}
+            </span>
+            <span className="text-xs text-muted">
+              {m.reasons.join(" · ")}
+              {m.testsHardest ? ` · Tests hardest: ${m.testsHardest}` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
