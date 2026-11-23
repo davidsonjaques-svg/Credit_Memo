@@ -19,6 +19,7 @@ export type TeamMember = { id: string; fullName: string };
 export type ClientOption = { id: string; legalName: string };
 
 export type Member = {
+  id: string;
   fullName: string;
   role: string;
   email: string | null;
@@ -108,13 +109,13 @@ export async function getMember(): Promise<{ email: string | null; member: Membe
 
   const { data } = await supabase
     .from("members")
-    .select("full_name, role, email")
+    .select("id, full_name, role, email")
     .eq("user_id", user.id)
     .maybeSingle();
 
   return {
     email: user.email ?? null,
-    member: data ? { fullName: data.full_name, role: data.role, email: data.email } : null,
+    member: data ? { id: data.id, fullName: data.full_name, role: data.role, email: data.email } : null,
   };
 }
 
@@ -212,6 +213,10 @@ function describe(action: string, detail: Record<string, unknown> | null): strin
       const fields = Array.isArray(d.fields) ? (d.fields as string[]).join(", ") : "";
       return fields ? `Details updated: ${fields}` : "Details updated";
     }
+    case "memo.drafted":
+      return `Credit memo drafted${d.recommendation ? `: ${String(d.recommendation).toLowerCase()}` : ""}`;
+    case "assessment_runs.update":
+      return "Credit memo approved";
     case "submissions.insert":
       return `Submission opened${d.status ? ` (${String(d.status)})` : ""}`;
     case "submissions.update":
@@ -597,4 +602,45 @@ export async function getReadinessScores(): Promise<Record<string, { score: numb
   return Object.fromEntries(
     (data ?? []).map((r) => [r.deal_id, { score: r.score, provisional: r.answered < r.total_criteria }]),
   );
+}
+
+// ── Credit memos ────────────────────────────────────────────────────────────
+export type MemoRun = {
+  id: string;
+  createdAt: string;
+  model: string;
+  recommendation: string | null;
+  rating: string | null;
+  outputMd: string;
+  truncated: boolean;
+  createdBy: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+};
+
+export async function getMemoRuns(dealId: string): Promise<MemoRun[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("assessment_runs")
+    .select("id, created_at, model, recommendation, rating, output_md, truncated, approved_at, creator:created_by(full_name), approver:approved_by(full_name)")
+    .eq("deal_id", dealId)
+    .eq("run_type", "credit_memo")
+    .order("created_at", { ascending: false });
+  if (error) return [];
+  const name = (m: unknown) => {
+    const one = Array.isArray(m) ? m[0] : m;
+    return (one as { full_name?: string } | null)?.full_name ?? null;
+  };
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    createdAt: r.created_at,
+    model: r.model,
+    recommendation: r.recommendation,
+    rating: r.rating,
+    outputMd: r.output_md ?? "",
+    truncated: r.truncated,
+    createdBy: name(r.creator),
+    approvedBy: name(r.approver),
+    approvedAt: r.approved_at,
+  }));
 }

@@ -78,9 +78,17 @@ async function DealFile({ params }: { params: Promise<{ id: string }> }) {
               {[deal.dealName, deal.product].filter(Boolean).join(" · ")}
             </p>
           </div>
-          <Pill tone={outcomeTone(deal.outcome)}>
-            {deal.outcome === "In Progress" ? deal.stage : deal.outcome}
-          </Pill>
+          <div className="flex flex-col items-end gap-2">
+            <Pill tone={outcomeTone(deal.outcome)}>
+              {deal.outcome === "In Progress" ? deal.stage : deal.outcome}
+            </Pill>
+            <Link
+              href={`/deals/${deal.id}/memo`}
+              className="flex h-10 items-center rounded-lg bg-navy px-4 text-sm font-semibold text-white"
+            >
+              Credit memo →
+            </Link>
+          </div>
         </div>
         <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-4 border-t border-sand-2 pt-4">
           <Fact label="Funding required" value={rand(deal.fundingRequired)} />

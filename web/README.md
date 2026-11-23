@@ -92,6 +92,27 @@ Run **`supabase/phase4.sql`** in the SQL Editor (after `phase1.sql`). It adds:
 - **Fee defaults** moved to the Engagement Letter Generator's terms for new mandates (existing
   mandates keep what they were signed on).
 
+## Phase 3: credit memos with Claude (one-off)
+
+1. Run **`supabase/phase3.sql`** in the SQL Editor (after `phase4.sql`).
+2. In Vercel → Settings → Environment Variables, add **`ANTHROPIC_API_KEY`** as a **Secret**
+   (unlike the Supabase variables, this one must stay secret: it is only read on the server).
+   Optional: `MEMO_MODEL` to use a different Claude model (default `claude-opus-5-5`).
+3. Redeploy.
+
+Each deal file then has a **Credit memo** button. The memo page:
+
+- drafts the memo with Claude from everything stored on the deal (Fact Sheet, financial periods,
+  risk engine flags, funding readiness and gaps, funder submissions, mandate, documents) and
+  streams it onto the page as it's written; every section names the records it was built from;
+- saves each draft as a version (`assessment_runs`, `run_type = credit_memo`), the same table the
+  Streamlit Credit Memo page uses, so memos from either app show up together;
+- lets an analyst or admin **approve** a version. Approval is final, recorded in the audit trail,
+  and a saved memo's text can't be edited afterwards;
+- prints to PDF on a clean A4 letterhead (Download PDF), or downloads the Markdown.
+
+Capturing the Fact Sheet and financials still happens in the Streamlit app for now.
+
 ## Run locally
 
 ```bash

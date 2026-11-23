@@ -31,3 +31,32 @@ body {
   background: var(--color-sand);
   color: var(--color-ink);
 }
+
+/* ── Credit memo typography ─────────────────────────────────────────────── */
+.memo { font-size: 15px; line-height: 1.65; color: var(--color-ink); }
+.memo > * + * { margin-top: 0.85em; }
+.memo h1, .memo h2 { font-size: 18px; font-weight: 700; margin-top: 1.8em; padding-bottom: 0.3em; border-bottom: 1px solid var(--color-sand-2); }
+.memo h1:first-child, .memo h2:first-child { margin-top: 0; }
+.memo h2 + p > em:only-child { color: var(--color-muted); font-size: 13px; }
+.memo h3 { font-size: 16px; font-weight: 600; margin-top: 1.4em; }
+.memo ul { list-style: disc; padding-left: 1.4em; }
+.memo ol { list-style: decimal; padding-left: 1.4em; }
+.memo li + li { margin-top: 0.3em; }
+.memo strong { font-weight: 600; }
+.memo table { width: 100%; border-collapse: collapse; font-size: 14px; display: block; overflow-x: auto; }
+.memo th { text-align: left; font-weight: 600; font-size: 12px; color: var(--color-muted); padding: 8px 10px 8px 0; border-bottom: 1px solid var(--color-line); }
+.memo td { padding: 8px 10px 8px 0; border-top: 1px solid var(--color-sand-2); vertical-align: top; }
+.memo blockquote { border-left: 3px solid var(--color-gold); padding-left: 12px; color: var(--color-slate); }
+.memo code { font-family: var(--font-mono); font-size: 13px; }
+
+/* ── Print: the memo only, as a clean A4 document ───────────────────────── */
+@media print {
+  @page { size: A4; margin: 16mm; }
+  body { background: #fff; }
+  .no-print { display: none !important; }
+  main { padding: 0 !important; max-width: none !important; }
+  .memo-sheet { border: none !important; padding: 0 !important; }
+  .memo table { display: table; }
+  .memo h2 { break-after: avoid; }
+  .memo tr { break-inside: avoid; }
+}
