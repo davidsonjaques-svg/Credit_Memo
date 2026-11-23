@@ -5,7 +5,7 @@ import { getMember } from "@/lib/data";
 
 export function Header() {
   return (
-    <header className="bg-navy text-white">
+    <header className="no-print bg-navy text-white">
       <div className="mx-auto flex max-w-[1360px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3.5 sm:px-8">
         <Link href="/" className="flex items-baseline gap-2.5">
           <span className="text-[15px] font-bold tracking-[0.22em]">SCALEFORCE</span>

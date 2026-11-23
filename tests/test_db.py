@@ -31,6 +31,7 @@ def db():
         c.execute((ROOT / "supabase/bootstrap.sql").read_text())
         c.execute((ROOT / "supabase/phase1.sql").read_text())
         c.execute((ROOT / "supabase/phase4.sql").read_text())
+        c.execute((ROOT / "supabase/phase3.sql").read_text())
     os.environ["DATABASE_URL"] = URL
     import streamlit as st
     st.cache_data.clear(); st.cache_resource.clear()
@@ -319,3 +320,57 @@ def test_phase4_readiness_and_fee_defaults(db):
     with db.tx() as cur:
         cur.execute("select distinct min_fee from fee_structures where code='capital'")
         assert [float(r["min_fee"]) for r in cur.fetchall()] == [75000]
+
+
+def test_phase3_memo_save_and_approval(db):
+    """Web memos: the team can save a run and approve it once; the text can't be edited."""
+    import psycopg
+    deal_id = db.create_deal("Memo Test (Pty) Ltd", 2_000_000)
+    jaques = "11111111-1111-1111-1111-111111111111"
+    with psycopg.connect(URL, autocommit=True) as c:
+        c.execute("grant usage on schema public, auth to authenticated")
+        c.execute("insert into auth.users values (%s) on conflict do nothing", (jaques,))
+        c.execute("update members set user_id=%s where full_name='Jaques Davidson'", (jaques,))
+        member = c.execute("select id from members where full_name='Jaques Davidson'").fetchone()[0]
+        org = c.execute("select org_id from deals where id=%s", (deal_id,)).fetchone()[0]
+
+        def as_jaques(sql, args=()):
+            with c.transaction():
+                c.execute("set local role authenticated")
+                c.execute("select set_config('request.jwt.claim.sub', %s, true)", (jaques,))
+                c.execute("select set_config('request.jwt.claims', %s, true)",
+                          (f'{{"sub": "{jaques}", "aal": "aal2"}}',))
+                cur = c.execute(sql, args)
+                return cur.fetchone() if cur.description else None
+
+        run = as_jaques("""insert into assessment_runs (org_id, deal_id, run_type, model, output_md, recommendation)
+                           values (%s, %s, 'credit_memo', 'claude-opus-5-5', '## Memo', 'APPROVE') returning id, created_by""",
+                        (org, deal_id))
+        assert run[1] == member                       # attributed to the signed-in member
+        # The memo text is locked once saved
+        try:
+            as_jaques("update assessment_runs set output_md = 'edited' where id = %s", (run[0],))
+            raise AssertionError("output_md should not be editable")
+        except psycopg.errors.InsufficientPrivilege:
+            pass
+        # Approval needs the approver, then works once
+        try:
+            as_jaques("update assessment_runs set approved_at = now() where id = %s", (run[0],))
+            raise AssertionError("approval without approver should fail")
+        except psycopg.errors.CheckViolation:
+            pass
+        as_jaques("update assessment_runs set approved_by = %s, approved_at = now() where id = %s", (member, run[0]))
+        try:
+            as_jaques("update assessment_runs set approved_at = now() + interval '1 day' where id = %s", (run[0],))
+            raise AssertionError("re-approval should fail")
+        except psycopg.errors.CheckViolation:
+            pass
+        audit = c.execute("select action, actor, detail from activity_log where deal_id=%s and action like 'assessment_runs%%'",
+                          (deal_id,)).fetchall()
+    assert len(audit) == 1 and audit[0][0] == "assessment_runs.update" and audit[0][1] == member
+    assert audit[0][2]["fields"] == ["approved_at", "approved_by"]
+    # Re-running is safe, and Streamlit's own run updates (pdf_path) still work
+    with psycopg.connect(URL, autocommit=True) as c:
+        c.execute((ROOT / "supabase/phase3.sql").read_text())
+    with db.tx() as cur:
+        cur.execute("update assessment_runs set pdf_path = 'x.pdf' where id = %s", (run[0],))
