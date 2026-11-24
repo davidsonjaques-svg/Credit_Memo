@@ -213,6 +213,14 @@ function describe(action: string, detail: Record<string, unknown> | null): strin
       const fields = Array.isArray(d.fields) ? (d.fields as string[]).join(", ") : "";
       return fields ? `Details updated: ${fields}` : "Details updated";
     }
+    case "summary.drafted":
+      return "Transaction Summary drafted with Claude";
+    case "summary.approved":
+      return `Transaction Summary v${d.version} approved`;
+    case "summary.sent":
+      return `Transaction Summary v${d.version} sent${d.recipient ? ` to ${d.recipient}` : ""}`;
+    case "fact_sheet_assessment.generated":
+      return `Fact Sheet v${d.version} assessed`;
     case "memo.drafted":
       return `Credit memo drafted${d.recommendation ? `: ${String(d.recommendation).toLowerCase()}` : ""}`;
     case "assessment_runs.update":
@@ -752,5 +760,108 @@ export async function getFactSheetWorkspace(dealId: string): Promise<FactSheetWo
           flags,
         }
       : null,
+  };
+}
+
+// ── Transaction Summaries ──────────────────────────────────────────────────
+export type SummaryVersion = {
+  id: string;
+  version: number;
+  status: "draft" | "approved" | "sent";
+  audience: "lender" | "investor";
+  recipient: string | null;
+  doc: unknown;
+  updatedAt: string;
+  createdBy: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  sentAt: string | null;
+  submissionId: string | null;
+};
+
+export type SummaryWorkspace = {
+  ready: boolean;                  // false until transaction_summary.sql has been run
+  dealId: string;
+  orgId: string;
+  dealRef: string;
+  client: string;
+  fundingRequired: number | null;
+  me: { id: string; name: string; canApprove: boolean; role: string };
+  prime: { rate: number; note: string | null; updatedAt: string | null };
+  versions: SummaryVersion[];
+  funders: { id: string; name: string }[];
+  periods: import("@/lib/summary").PeriodRow[];
+  documents: DealDocument[];
+};
+
+export async function getSummaryWorkspace(dealId: string): Promise<SummaryWorkspace | null> {
+  const { member } = await getMember();
+  if (!member) return null;
+  const supabase = await createClient();
+  const { data: deal } = await supabase
+    .from("v_pipeline")
+    .select("id, org_id, deal_ref, client, funding_required")
+    .eq("id", dealId)
+    .maybeSingle();
+  if (!deal) return null;
+
+  const [versions, prime, approver, funders, periods, docs] = await Promise.all([
+    supabase
+      .from("transaction_summaries")
+      .select("id, version, status, audience, recipient, doc, updated_at, approved_at, sent_at, submission_id, creator:created_by(full_name), approver:approved_by(full_name)")
+      .eq("deal_id", dealId)
+      .order("version", { ascending: false }),
+    supabase.from("org_settings").select("prime_rate, prime_note, updated_at").maybeSingle(),
+    supabase.from("members").select("can_approve").eq("id", member.id).maybeSingle(),
+    supabase.from("funders").select("id, name").eq("active", true).order("name"),
+    supabase
+      .from("financial_periods")
+      .select("period_label, period_type, months_covered, period_end, revenue, gross_profit, ebitda, net_profit, total_debt, equity")
+      .eq("deal_id", dealId)
+      .order("period_end", { ascending: true, nullsFirst: true }),
+    supabase
+      .from("documents")
+      .select("id, doc_type, file_name, uploaded_at, extraction")
+      .eq("deal_id", dealId)
+      .order("uploaded_at", { ascending: false }),
+  ]);
+  const one = (v: unknown) => (Array.isArray(v) ? v[0] : v) as { full_name?: string } | null;
+
+  return {
+    ready: !versions.error && !prime.error,
+    dealId,
+    orgId: deal.org_id,
+    dealRef: deal.deal_ref,
+    client: deal.client,
+    fundingRequired: deal.funding_required === null ? null : Number(deal.funding_required),
+    me: { id: member.id, name: member.fullName, role: member.role, canApprove: Boolean(approver.data?.can_approve) },
+    prime: {
+      rate: prime.data ? Number(prime.data.prime_rate) : 10.75,
+      note: prime.data?.prime_note ?? null,
+      updatedAt: prime.data?.updated_at ?? null,
+    },
+    versions: (versions.data ?? []).map((v) => ({
+      id: v.id,
+      version: v.version,
+      status: v.status,
+      audience: v.audience,
+      recipient: v.recipient,
+      doc: v.doc,
+      updatedAt: v.updated_at,
+      createdBy: one(v.creator)?.full_name ?? null,
+      approvedBy: one(v.approver)?.full_name ?? null,
+      approvedAt: v.approved_at,
+      sentAt: v.sent_at,
+      submissionId: v.submission_id,
+    })),
+    funders: funders.data ?? [],
+    periods: (periods.data ?? []).map((p) => ({ ...p, total_assets: null })),
+    documents: (docs.data ?? []).map((d) => ({
+      id: d.id,
+      docType: d.doc_type,
+      fileName: d.file_name,
+      uploadedAt: d.uploaded_at,
+      read: d.extraction !== null,
+    })),
   };
 }

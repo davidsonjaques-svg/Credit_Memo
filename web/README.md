@@ -137,6 +137,34 @@ rules and assessment prompt as the Streamlit Fact Sheet, and saves the same reco
 Not in this stage: the client link (clients filling in their own Fact Sheet). It stays parked
 until the POPIA position on client uploads is settled; the Streamlit client link is unchanged.
 
+## Transaction Summaries (one-off)
+
+Run **`supabase/transaction_summary.sql`** in the SQL Editor (after `phase5.sql`). It adds the
+summaries table, marks Jaques Davidson, Zach Moses and Shaun Hartley as approvers, and sets prime
+at 10.75%. Uses the same `ANTHROPIC_API_KEY`.
+
+Each deal file then has a **Transaction Summary** button. It builds the short, branded snapshot
+that goes to lenders and investors, on the ScaleForce letterhead:
+
+1. **Brief:** choose lender submission or investor briefing, the recipient and the action; describe
+   the deal in your own words. **Draft with Claude** writes the wording, the parties and the links
+   for the schematics from the brief plus everything stored on the deal.
+2. **Figures:** facility, security, term, margin, use of funds, sources, affordability, and up to
+   two companies' financial snapshots (from the Fact Sheet, typed in, or read from uploaded AFS or
+   management accounts by Claude). LTV, instalments at the prime setting, DSCR, totals,
+   percentages, margins, growth and gearing are **calculated by the app, never by Claude**.
+   Wording refers to them with tokens like `{LTV}` and `{DSCR}`, so text and tables always agree.
+3. **Parties:** the transaction and stakeholder schematics are drawn from the parties and links,
+   in a fixed 3 × 3 layout (lender top, borrower centre, adviser top right).
+4. **Wording:** every sentence is editable; sections can be switched on or off.
+5. **Preview / Download PDF:** A4 pages, page numbers, letterhead and footer. Print from Chrome or
+   Edge with "Save as PDF". The preview warns if a page runs over one sheet.
+
+Versions: one working draft per deal (saves itself). Jaques, Zach or Shaun approves it, which
+locks it. **Mark as sent** records the date and, if a panel funder is chosen, a funder submission on
+the deal. **New version from this one** starts a fresh draft, e.g. for another lender. Approvers
+(or admins) change the prime rate in the side panel after each MPC meeting.
+
 ## Run locally
 
 ```bash
