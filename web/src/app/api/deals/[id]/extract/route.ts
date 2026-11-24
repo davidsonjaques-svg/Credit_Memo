@@ -8,6 +8,7 @@ import {
   financialsPrefill,
   parseJsonReply,
 } from "@/lib/fact-sheet-server";
+import { SNAPSHOT_PROMPT, snapshotEntity } from "@/lib/summary-server";
 import { createClient } from "@/lib/supabase/server";
 
 export const maxDuration = 300;
@@ -27,10 +28,10 @@ export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/extr
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return Response.json({ error: "ANTHROPIC_API_KEY isn't set on Vercel." }, { status: 500 });
 
-  const body = (await req.json().catch(() => null)) as { kind?: string; documentIds?: string[] } | null;
+  const body = (await req.json().catch(() => null)) as { kind?: string; documentIds?: string[]; role?: string } | null;
   const kind = body?.kind;
   const ids = Array.isArray(body?.documentIds) ? body.documentIds.slice(0, 6) : [];
-  if ((kind !== "bank" && kind !== "financials") || !ids.length) {
+  if ((kind !== "bank" && kind !== "financials" && kind !== "snapshot") || !ids.length) {
     return Response.json({ error: "Choose at least one document." }, { status: 400 });
   }
 
@@ -67,7 +68,12 @@ export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/extr
     const msg = await anthropic.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 4000,
-      messages: [{ role: "user", content: [...blocks, { type: "text", text: kind === "bank" ? BANK_PROMPT : FINANCIALS_PROMPT }] }],
+      messages: [
+        {
+          role: "user",
+          content: [...blocks, { type: "text", text: kind === "bank" ? BANK_PROMPT : kind === "snapshot" ? SNAPSHOT_PROMPT : FINANCIALS_PROMPT }],
+        },
+      ],
     });
     const text = msg.content.map((b) => (b.type === "text" ? b.text : "")).join("");
     const json = parseJsonReply(text);
@@ -78,6 +84,9 @@ export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/extr
       .update({ extraction: { kind, model: msg.model, result: json }, extraction_method: "hybrid" })
       .in("id", docs.map((d) => d.id));
 
+    if (kind === "snapshot") {
+      return Response.json({ kind, entity: snapshotEntity(json, String(body?.role ?? "Borrower").slice(0, 60)) });
+    }
     return Response.json(kind === "bank" ? { kind, bank: bankPrefill(json) } : { kind, financials: financialsPrefill(json) });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

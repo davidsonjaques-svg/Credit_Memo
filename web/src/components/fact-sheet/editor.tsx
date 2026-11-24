@@ -190,6 +190,7 @@ export function FactSheetEditor({ ws, canEdit }: { ws: FactSheetWorkspace; canEd
       setDirty(true);
       return `Section 06 filled in. ${b.note} Check it before generating.`;
     }
+    if (r.kind !== "financials") return "";
     const x = r.financials;
     setForm((f) => {
       const fin = { ...f.fin };
@@ -460,7 +461,7 @@ export function FactSheetEditor({ ws, canEdit }: { ws: FactSheetWorkspace; canEd
                   <Input value={form.mgtAsAt} onChange={(e) => set("mgtAsAt", e.target.value)} />
                 </Field>
               </Grid>
-              <div className="overflow-x-auto">
+              <div className="scroll-x">
                 <table className="w-full min-w-[620px] border-collapse text-sm">
                   <thead>
                     <tr className="text-left text-xs text-muted">

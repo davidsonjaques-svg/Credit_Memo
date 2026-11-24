@@ -84,6 +84,12 @@ async function DealFile({ params }: { params: Promise<{ id: string }> }) {
             </Pill>
             <div className="flex flex-wrap justify-end gap-2">
               <Link
+                href={`/deals/${deal.id}/summary`}
+                className="flex h-10 items-center rounded-lg border border-line bg-white px-4 text-sm font-semibold"
+              >
+                Transaction Summary →
+              </Link>
+              <Link
                 href={`/deals/${deal.id}/fact-sheet`}
                 className="flex h-10 items-center rounded-lg border border-line bg-white px-4 text-sm font-semibold"
               >

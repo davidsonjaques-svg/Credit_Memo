@@ -60,3 +60,72 @@ body {
   .memo h2 { break-after: avoid; }
   .memo tr { break-inside: avoid; }
 }
+
+/* ── Transaction Summary: A4 pages on the ScaleForce letterhead ─────────── */
+.ts-doc { display: flex; flex-direction: column; gap: 24px; align-items: center; color: #0a1628; }
+.ts-page {
+  width: 210mm; min-height: 297mm; box-sizing: border-box; padding: 13mm 15mm 10mm;
+  background: #fff; box-shadow: 0 1px 3px rgba(10, 22, 40, .12), 0 8px 24px rgba(10, 22, 40, .06);
+  display: flex; flex-direction: column; gap: 5.5mm; font-size: 8.6pt; line-height: 1.45;
+}
+.ts-letterhead { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 3mm; border-bottom: 1px solid #e2ded3; }
+.ts-brand { font-weight: 800; letter-spacing: .32em; font-size: 15pt; line-height: 1; }
+.ts-brand span { color: #c9a84c; }
+.ts-tagline { margin-top: 1.6mm; font-size: 7.6pt; font-style: italic; color: #6b5310; }
+.ts-lh-right { text-align: right; font-size: 7.8pt; color: #3a4b66; line-height: 1.5; }
+.ts-kicker { font-size: 7.6pt; font-weight: 800; letter-spacing: .22em; text-transform: uppercase; color: #6b5310; margin-bottom: -3.5mm; }
+.ts-title { font-size: 17pt; font-weight: 800; line-height: 1.2; letter-spacing: -.01em; }
+.ts-page-title { font-size: 14pt; font-weight: 800; line-height: 1.25; margin-top: 1mm; }
+.ts-subtitle { font-size: 8.6pt; color: #3a4b66; margin-top: -4mm; }
+.ts-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4mm; border-top: 1px solid #e2ded3; border-bottom: 1px solid #e2ded3; padding: 2.2mm 0; }
+.ts-meta dt { font-size: 7.4pt; color: #5b6474; }
+.ts-meta dd { font-weight: 700; font-size: 8.2pt; }
+.ts-kpis { display: grid; gap: 2.5mm; }
+.ts-kpi { background: #f4f2ec; border-radius: 4px; padding: 2.6mm 3mm; display: flex; flex-direction: column; gap: .6mm; }
+.ts-kpi-lead { background: #0a1628; color: #fff; }
+.ts-kpi-label { font-size: 7.4pt; color: #5b6474; }
+.ts-kpi-lead .ts-kpi-label { color: #e8d8a8; }
+.ts-kpi-value { font-size: 17pt; font-weight: 800; letter-spacing: -.01em; line-height: 1.1; }
+.ts-kpi-sub { font-size: 7.4pt; color: #3a4b66; line-height: 1.35; }
+.ts-kpi-lead .ts-kpi-sub { color: #d8dde6; }
+.ts-h { font-size: 8.4pt; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 2mm; }
+.ts-p { margin-bottom: 1.6mm; }
+.ts-kv, .ts-table { width: 100%; border-collapse: collapse; }
+.ts-kv th { width: 27%; text-align: left; font-weight: 400; color: #3a4b66; vertical-align: top; padding: 1.5mm 3mm 1.5mm 1mm; border-top: 1px solid #ece9e0; }
+.ts-kv td { padding: 1.5mm 0; border-top: 1px solid #ece9e0; vertical-align: top; }
+.ts-kv thead th, .ts-kv-head { background: #0a1628; color: #fff !important; font-weight: 700 !important; padding: 1.6mm 1mm !important; border: none; }
+.ts-table th { background: #0a1628; color: #fff; text-align: left; font-weight: 700; padding: 1.6mm 2mm; font-size: 8pt; }
+.ts-table td { padding: 1.4mm 2mm; border-top: 1px solid #ece9e0; vertical-align: top; }
+.ts-table .r { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ts-total td, .ts-strong td { font-weight: 700; }
+.ts-total td { border-top: 1.5px solid #0a1628; }
+.ts-subhead td { font-weight: 800; font-size: 7.4pt; letter-spacing: .1em; text-transform: uppercase; color: #6b5310; padding-top: 2.2mm; }
+.ts-ratio td { color: #5b6474; font-style: italic; }
+.ts-parties td:first-child { width: 26%; }
+.ts-parties td:nth-child(2) { width: 26%; }
+.ts-b { font-weight: 700; }
+.ts-note { font-size: 7.8pt; color: #3a4b66; margin-top: 1.6mm; }
+.ts-aside { margin-top: 6mm; }
+.ts-warn { color: #9b2c2c; }
+.ts-closing { font-style: italic; border-top: 1px solid #ece9e0; padding-top: 2mm; }
+.ts-two { display: grid; grid-template-columns: 1fr 1fr; gap: 7mm; align-items: start; }
+.ts-ol { list-style: decimal; padding-left: 4.5mm; display: flex; flex-direction: column; gap: 1.2mm; }
+.ts-ul { list-style: disc; padding-left: 4.5mm; display: flex; flex-direction: column; gap: 1.2mm; }
+.ts-cols { display: grid; grid-template-columns: 1fr 1fr; column-gap: 7mm; }
+.ts-schematic { width: 100%; height: auto; font-family: inherit; }
+.ts-footer { margin-top: auto; padding-top: 3mm; border-top: 1px solid #e2ded3; text-align: center; font-size: 7.2pt; color: #5b6474; line-height: 1.5; }
+.ts-page section { break-inside: avoid; }
+
+@media print {
+  @page summary { size: A4; margin: 0; }
+  .ts-doc { page: summary; gap: 0; display: block; }
+  .ts-page { box-shadow: none; height: 296.6mm; min-height: 0; overflow: hidden; break-after: page; margin: 0; }
+  .ts-page:last-child { break-after: auto; }
+  .ts-table th, .ts-kv thead th, .ts-kv-head, .ts-kpi, .ts-kpi-lead { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+@media print {
+  .ts-scroll { padding: 0 !important; margin: 0 !important; background: none !important; overflow: visible !important; border-radius: 0 !important; }
+}
+
+/* A horizontally scrolling box that never widens the page on a phone */
+.scroll-x { overflow-x: auto; contain: inline-size; }

@@ -112,7 +112,10 @@ const TYPE_LABEL: Record<string, string> = {
 
 export type ExtractResult =
   | { kind: "bank"; bank: import("@/lib/fact-sheet").BankPrefill }
-  | { kind: "financials"; financials: import("@/lib/fact-sheet").FinancialsPrefill; mgmtOnly: boolean };
+  | { kind: "financials"; financials: import("@/lib/fact-sheet").FinancialsPrefill; mgmtOnly: boolean }
+  | { kind: "snapshot"; entity: import("@/lib/summary").FinEntity };
+
+const ENTITY_ROLES = ["Borrower", "Security provider", "Guarantor", "Target", "Holding company", "Landlord"];
 
 export function DocReader({
   kind,
@@ -123,7 +126,7 @@ export function DocReader({
   onRead,
   disabled,
 }: {
-  kind: "bank" | "financials";
+  kind: "bank" | "financials" | "snapshot";
   dealId: string;
   orgId: string;
   documents: DealDocument[];
@@ -135,6 +138,7 @@ export function DocReader({
   const mine = documents.filter((d) => types.includes(d.docType));
   const [selected, setSelected] = useState<string[]>(() => mine.filter((d) => !d.read).map((d) => d.id));
   const [docType, setDocType] = useState(kind === "bank" ? "BANK_STATEMENT" : "AFS");
+  const [role, setRole] = useState(ENTITY_ROLES[0]);
   const [busy, setBusy] = useState<"upload" | "read" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -177,13 +181,13 @@ export function DocReader({
       const res = await fetch(`/api/deals/${dealId}/extract`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, documentIds: selected }),
+        body: JSON.stringify({ kind, documentIds: selected, role }),
       });
       const json = await res.json().catch(() => ({ error: "The server didn't answer. Try again." }));
       if (!res.ok || json.error) throw new Error(json.error ?? `Failed (${res.status})`);
       const mgmtOnly =
         kind === "financials" && selected.every((id) => mine.find((d) => d.id === id)?.docType === "MGMT_ACCOUNTS");
-      setDone(onRead(kind === "bank" ? json : { ...json, mgmtOnly }));
+      setDone(onRead(kind === "financials" ? { ...json, mgmtOnly } : json));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -195,12 +199,14 @@ export function DocReader({
     <div className="no-print flex flex-col gap-3 rounded-lg border border-gold/50 bg-gold-tint/60 p-4">
       <div className="flex flex-col gap-0.5">
         <p className="text-sm font-semibold">
-          {kind === "bank" ? "Read bank statements with Claude" : "Read financial statements with Claude"}
+          {kind === "bank" ? "Read bank statements with Claude" : kind === "snapshot" ? "Add a financial snapshot from statements" : "Read financial statements with Claude"}
         </p>
         <p className="text-xs text-slate">
           {kind === "bank"
             ? "Upload the PDFs downloaded from online banking. Claude fills in this section for you to check."
-            : "Upload the AFS or management accounts (text or scanned PDF). Claude fills in the figures for you to check."}{" "}
+            : kind === "snapshot"
+              ? "Upload the AFS or management accounts of the borrower, or of another party such as the security provider. Claude reads up to three periods for you to check."
+              : "Upload the AFS or management accounts (text or scanned PDF). Claude fills in the figures for you to check."}{" "}
           Files are kept on the deal.
         </p>
       </div>
@@ -221,7 +227,7 @@ export function DocReader({
                 />
                 <span className="min-w-0 truncate">{d.fileName}</span>
                 <span className="shrink-0 text-xs text-muted">
-                  {kind === "financials" ? `${TYPE_LABEL[d.docType]} · ` : ""}
+                  {kind !== "bank" ? `${TYPE_LABEL[d.docType]} · ` : ""}
                   {d.read ? "read before" : "not read yet"}
                 </span>
               </label>
@@ -231,7 +237,20 @@ export function DocReader({
       ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
-        {kind === "financials" ? (
+        {kind === "snapshot" ? (
+          <select
+            aria-label="Whose statements these are"
+            value={role}
+            disabled={disabled || busy !== null}
+            onChange={(e) => setRole(e.target.value)}
+            className="h-10 rounded-lg border border-line bg-white px-2 text-sm"
+          >
+            {ENTITY_ROLES.map((r) => (
+              <option key={r}>{r}</option>
+            ))}
+          </select>
+        ) : null}
+        {kind !== "bank" ? (
           <select
             aria-label="Type of statement to upload"
             value={docType}

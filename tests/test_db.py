@@ -34,6 +34,7 @@ def db():
         c.execute((ROOT / "supabase/phase4.sql").read_text())
         c.execute((ROOT / "supabase/phase3.sql").read_text())
         c.execute((ROOT / "supabase/phase5.sql").read_text())
+        c.execute((ROOT / "supabase/transaction_summary.sql").read_text())
     os.environ["DATABASE_URL"] = URL
     import streamlit as st
     st.cache_data.clear(); st.cache_resource.clear()
@@ -444,3 +445,63 @@ def test_phase5_fact_sheet_draft_and_assessment(db):
     assert bee == "Level 2"
     with psycopg.connect(URL, autocommit=True) as c:
         c.execute((ROOT / "supabase/phase5.sql").read_text())    # re-run safe
+
+
+def test_transaction_summary_approve_and_send(db):
+    """Summaries: one draft, approvers only, locked once approved, sending records a submission."""
+    import json
+    import psycopg
+    deal_id = db.create_deal("Summary Test (Pty) Ltd", 8_100_000)
+    jaques, thabani = "11111111-1111-1111-1111-111111111111", "33333333-3333-3333-3333-333333333333"
+    with psycopg.connect(URL, autocommit=True) as c:
+        c.execute("grant usage on schema public, auth to authenticated")
+        for uid, name in ((jaques, "Jaques Davidson"), (thabani, "Thabani")):
+            c.execute("insert into auth.users values (%s) on conflict do nothing", (uid,))
+            c.execute("update members set user_id=%s where full_name=%s", (uid, name))
+        org = c.execute("select org_id from deals where id=%s", (deal_id,)).fetchone()[0]
+        funder = c.execute("select id from funders where org_id=%s and name='Investec'", (org,)).fetchone()[0]
+        approvers = {r[0] for r in c.execute("select full_name from members where can_approve")}
+        prime = c.execute("select prime_rate from org_settings where org_id=%s", (org,)).fetchone()[0]
+
+        def as_user(uid, sql, args=()):
+            with c.transaction():
+                c.execute("set local role authenticated")
+                c.execute("select set_config('request.jwt.claim.sub', %s, true)", (uid,))
+                c.execute("select set_config('request.jwt.claims', %s, true)", (f'{{"sub": "{uid}", "aal": "aal2"}}',))
+                cur = c.execute(sql, args)
+                return cur.fetchone() if cur.description else None
+
+        def raises(exc, uid, sql, args=()):
+            try:
+                as_user(uid, sql, args)
+            except exc:
+                return True
+            raise AssertionError(f"expected {exc.__name__}: {sql}")
+
+        save = "select save_transaction_summary_draft(%s, 'lender', 'Ivy, Investec', %s, %s)"
+        d1 = as_user(thabani, save, (deal_id, funder, json.dumps({"a": 1})))[0]
+        assert as_user(thabani, save, (deal_id, funder, json.dumps({"a": 2})))[0] == d1   # one draft
+        raises(psycopg.errors.CheckViolation, jaques, "select mark_transaction_summary_sent(%s, %s, null)", (d1, funder))
+        raises(psycopg.errors.InsufficientPrivilege, thabani, "select approve_transaction_summary(%s)", (d1,))
+        raises(psycopg.errors.InsufficientPrivilege, thabani, "update transaction_summaries set status='approved' where id=%s", (d1,))
+        as_user(jaques, "select approve_transaction_summary(%s)", (d1,))
+        raises(psycopg.errors.CheckViolation, thabani, "update transaction_summaries set doc='{}' where id=%s", (d1,))
+        sub = as_user(thabani, "select mark_transaction_summary_sent(%s, %s, '2026-11-24')", (d1, funder))[0]
+        d2 = as_user(thabani, "select new_transaction_summary_version(%s)", (d1,))[0]
+        raises(psycopg.errors.UniqueViolation, thabani, "select new_transaction_summary_version(%s)", (d1,))
+        raises(psycopg.errors.InsufficientPrivilege, thabani, "select set_prime_rate(11, 'cut')")
+        as_user(jaques, "select set_prime_rate(10.5, 'SARB cut')")
+
+        row = c.execute("select status, approved_by is not null, submission_id from transaction_summaries where id=%s", (d1,)).fetchone()
+        s_row = c.execute("select status, submitted_on, funder_id, notes from submissions where id=%s", (sub,)).fetchone()
+        v2 = c.execute("select version, status, doc from transaction_summaries where id=%s", (d2,)).fetchone()
+        log = [r[0] for r in c.execute("select action from activity_log where deal_id=%s and action like 'summary.%%' order by id", (deal_id,))]
+        new_prime = c.execute("select prime_rate from org_settings where org_id=%s", (org,)).fetchone()[0]
+    assert {"Jaques Davidson", "Zach Moses"} <= approvers and "Thabani" not in approvers
+    assert float(prime) == 10.75 and float(new_prime) == 10.5
+    assert row == ("sent", True, sub)
+    assert s_row[0] == "Submitted" and str(s_row[1]) == "2026-11-24" and s_row[2] == funder and "v1" in s_row[3]
+    assert v2[0] == 2 and v2[1] == "draft" and v2[2] == {"a": 2}
+    assert log == ["summary.approved", "summary.sent"]
+    with psycopg.connect(URL, autocommit=True) as c:
+        c.execute((ROOT / "supabase/transaction_summary.sql").read_text())    # re-run safe
