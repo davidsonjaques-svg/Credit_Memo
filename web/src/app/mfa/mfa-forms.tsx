@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
-import { confirmCode, startEnrollment, type CodeState, type Enrollment } from "@/app/actions/mfa";
+import { useActionState } from "react";
+import { confirmCode, enrollAction, type CodeState } from "@/app/actions/mfa";
 import { FormMessage, Input, Submit } from "@/components/forms/fields";
 
 const initial: CodeState = { error: null };
@@ -31,17 +31,13 @@ export function CodeForm({ factorId }: { factorId: string }) {
 }
 
 export function EnrollFlow() {
-  const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  const begin = () =>
-    startTransition(async () => {
-      setEnrollment(await startEnrollment());
-    });
+  // A form action (not an onClick) so a tap works even while the page is still
+  // loading on a slow connection, and errors come back as a message
+  const [enrollment, begin, pending] = useActionState(enrollAction, null);
 
   if (!enrollment || enrollment.error !== null) {
     return (
-      <div className="mt-6 flex flex-col gap-4">
+      <form action={begin} className="mt-6 flex flex-col gap-4">
         <ol className="list-decimal space-y-1.5 pl-5 text-sm text-slate">
           <li>Install Google Authenticator, Microsoft Authenticator or 1Password on your phone.</li>
           <li>Scan the QR code you get on the next step.</li>
@@ -49,14 +45,13 @@ export function EnrollFlow() {
         </ol>
         {enrollment?.error ? <FormMessage error={enrollment.error} /> : null}
         <button
-          type="button"
-          onClick={begin}
+          type="submit"
           disabled={pending}
           className="h-11 rounded-lg bg-navy text-sm font-semibold text-white disabled:opacity-60"
         >
-          {pending ? "Preparing…" : "Show my QR code"}
+          {pending ? "Preparing…" : enrollment?.error ? "Try again" : "Show my QR code"}
         </button>
-      </div>
+      </form>
     );
   }
 
