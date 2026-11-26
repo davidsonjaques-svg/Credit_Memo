@@ -13,11 +13,15 @@ export type Enrollment =
  */
 export async function startEnrollment(): Promise<Enrollment> {
   const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) redirect("/login");
+  const { data: auth, error: userError } = await supabase.auth.getUser();
+  if (!auth.user) {
+    return {
+      error: `Your sign-in has expired${userError ? ` (${userError.message})` : ""}. Use "Sign out" below, sign in again, then show the QR code.`,
+    };
+  }
 
   const { data: factors, error: listError } = await supabase.auth.mfa.listFactors();
-  if (listError) return { error: "Couldn't load your sign-in settings. Try again." };
+  if (listError) return { error: `Couldn't load your sign-in settings (${listError.message}). Try again.` };
 
   if ((factors?.totp ?? []).length > 0) {
     return { error: "An authenticator is already set up on this account. Reload the page to enter its code." };
@@ -25,7 +29,10 @@ export async function startEnrollment(): Promise<Enrollment> {
 
   // Remove unfinished attempts so they don't pile up
   for (const f of factors?.all ?? []) {
-    if (f.status === "unverified") await supabase.auth.mfa.unenroll({ factorId: f.id });
+    if (f.status === "unverified") {
+      const { error } = await supabase.auth.mfa.unenroll({ factorId: f.id });
+      if (error) return { error: `Couldn't clear an earlier setup attempt (${error.message}). Ask Jaques to remove it in Supabase → Authentication → Users.` };
+    }
   }
 
   const { data, error } = await supabase.auth.mfa.enroll({
@@ -34,12 +41,21 @@ export async function startEnrollment(): Promise<Enrollment> {
   });
   if (error || !data) {
     return {
-      error:
-        "Two-factor setup isn't available. In Supabase, check Authentication → Multi-Factor has TOTP switched on.",
+      error: `Two-factor setup failed${error ? ` (${error.message})` : ""}. In Supabase, check Authentication → Multi-Factor has TOTP switched on.`,
     };
   }
 
   return { factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret, error: null };
+}
+
+/** Form version of startEnrollment, so the button works even before the page has fully loaded. */
+export async function enrollAction(_prev: Enrollment | null, _form: FormData): Promise<Enrollment> {
+  void _form;
+  try {
+    return await startEnrollment();
+  } catch (e) {
+    return { error: `Something went wrong preparing your QR code (${e instanceof Error ? e.message : String(e)}). Reload and try again.` };
+  }
 }
 
 export type CodeState = { error: string | null };
